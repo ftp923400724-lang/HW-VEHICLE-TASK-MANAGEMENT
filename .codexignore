@@ -1,9 +1,40 @@
+# dependencies
 node_modules
+
+# git
 .git
+.gitignore
+
+# build output
 dist
 build
-coverage
+out
 .next
+
+# test / coverage
+coverage
+
+# cache
 .cache
+.turbo
+.parcel-cache
+
+# temp
 tmp
+temp
+
+# logs
 *.log
+logs
+
+# env
+.env
+.env.*
+
+# system
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode
+.idea
