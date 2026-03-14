@@ -15,13 +15,10 @@
 
 <script>
 import { ElTag } from 'element-plus'
-import { requestJson, normalizeListResult } from '@/utils/request'
+import { normalizeListResult } from '@/api/http'
+import { fetchRealtimeVehicles, fetchVehicleUnits, fetchVehicleTypes } from '@/api/vehicle'
 import { extractDeviceKey, hasValidCoordinates } from '@/utils/vehicle'
 
-const REALTIME_PATH =
-  import.meta.env.VITE_VEHICLE_REALTIME_PATH || '/vehicle/real-time-location'
-const UNIT_PATH = import.meta.env.VITE_VEHICLE_UNIT_PATH || '/vehicle-units'
-const TYPE_PATH = import.meta.env.VITE_VEHICLE_TYPE_PATH || '/vehicle-types'
 const ONLINE_THRESHOLD_MINUTES = 5
 const OFFLINE_ABNORMAL_THRESHOLD_MINUTES = 30 * 24 * 60
 
@@ -60,7 +57,7 @@ export default {
       this.loading = true
       try {
         await this.ensureSortMetadata()
-        const payload = await requestJson(REALTIME_PATH)
+        const payload = await fetchRealtimeVehicles()
         const vehicles = normalizeListResult(payload).list
 
         this.fullTreeData = this.buildHierarchicalTree(vehicles)
@@ -216,9 +213,7 @@ export default {
     async loadUnitSorts() {
       if (this.unitSortMap.size) return
       try {
-        const payload = await requestJson(UNIT_PATH, {
-          params: { page: 1, page_size: 9999, pageSize: 9999 }
-        })
+        const payload = await fetchVehicleUnits({ page: 1, page_size: 9999, pageSize: 9999 })
         const { list } = normalizeListResult(payload)
         const map = new Map()
         ;(list || []).forEach((item) => {
@@ -240,9 +235,7 @@ export default {
     async loadTypeSorts() {
       if (this.typeSortMap.size) return
       try {
-        const payload = await requestJson(TYPE_PATH, {
-          params: { page: 1, page_size: 9999, pageSize: 9999 }
-        })
+        const payload = await fetchVehicleTypes({ page: 1, page_size: 9999, pageSize: 9999 })
         const { list } = normalizeListResult(payload)
         const map = new Map()
         ;(list || []).forEach((item) => {

@@ -8,11 +8,10 @@
 window._AMapSecurityConfig = { securityJsCode: import.meta.env.VITE_AMAP_SECURITY_CODE }
 import AMapLoader from '@amap/amap-jsapi-loader'
 import carIcon from '@/assets/main/car.png'
-import { requestJson, normalizeListResult } from '@/utils/request'
+import { normalizeListResult } from '@/api/http'
+import { fetchRealtimeVehicles } from '@/api/vehicle'
 import { extractDeviceKey, toFiniteNumber } from '@/utils/vehicle'
 
-const REALTIME_PATH =
-  import.meta.env.VITE_VEHICLE_REALTIME_PATH || '/vehicle/real-time-location'
 const POLL_INTERVAL = 60000
 
 export default {
@@ -97,8 +96,8 @@ export default {
     async fetchAndRender() {
       if (!this.AMap || !this.mapInstance) return
       try {
-      const payload = await requestJson(REALTIME_PATH)
-      const records = this.normalizeRecords(payload)
+        const payload = await fetchRealtimeVehicles()
+        const records = this.normalizeRecords(payload)
         this.updateMarkers(records)
       } catch (error) {
         // eslint-disable-next-line no-console

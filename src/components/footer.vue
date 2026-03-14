@@ -9,9 +9,7 @@
 <script>
 import { defineComponent } from 'vue';
 import Chart from 'chart.js/auto';
-import { requestJson } from '@/utils/request';
-
-const HOURLY_STATUS_PATH = import.meta.env.VITE_VEHICLE_HOURLY_STATUS_PATH || '/vehicle/hourly-status';
+import { fetchHourlyVehicleStatus } from '@/api/vehicle';
 
 export default defineComponent({
   name: 'FooterPanel',
@@ -59,7 +57,7 @@ export default defineComponent({
       this.loading = true;
       this.errorMessage = '';
       try {
-        const payload = await requestJson(HOURLY_STATUS_PATH);
+        const payload = await fetchHourlyVehicleStatus();
         this.applyHourlyPayload(payload?.data || {});
       } catch (error) {
         // eslint-disable-next-line no-console

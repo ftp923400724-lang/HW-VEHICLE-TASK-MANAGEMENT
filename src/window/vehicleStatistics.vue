@@ -121,13 +121,17 @@
 
 <script>
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { requestJson, normalizeListResult } from '@/utils/request'
-
-const VEHICLE_PATH = import.meta.env.VITE_VEHICLE_PATH || '/vehicles'
-const UNIT_PATH = import.meta.env.VITE_VEHICLE_UNIT_PATH || '/vehicle-units'
-const TYPE_PATH = import.meta.env.VITE_VEHICLE_TYPE_PATH || '/vehicle-types'
-const DEVICE_BINDING_PATH = import.meta.env.VITE_DEVICE_BINDING_PATH || '/device-bindings'
-const PERMISSION_GROUPS_PATH = import.meta.env.VITE_PERMISSION_GROUPS_PATH || '/permission-groups'
+import { normalizeListResult } from '@/api/http'
+import {
+  fetchVehicleList,
+  createVehicle,
+  updateVehicle,
+  deleteVehicle,
+  fetchVehicleUnits,
+  fetchVehicleTypes,
+  fetchPermissionGroups,
+  fetchDeviceBindings
+} from '@/api/vehicle'
 
 export default {
   name: 'VehicleStatisticsWindow',
@@ -271,9 +275,7 @@ export default {
     async loadUnits() {
       this.unitLoading = true
       try {
-        const payload = await requestJson(UNIT_PATH, {
-          params: { page: 1, page_size: 200, pageSize: 200 }
-        })
+        const payload = await fetchVehicleUnits({ page: 1, page_size: 200, pageSize: 200 })
         const { list } = normalizeListResult(payload)
         this.unitOptions = (list || []).map((item) => ({
           value: item.id ?? item.unit_id ?? item.value,
@@ -289,9 +291,7 @@ export default {
     async loadTypes() {
       this.typeLoading = true
       try {
-        const payload = await requestJson(TYPE_PATH, {
-          params: { page: 1, page_size: 200, pageSize: 200 }
-        })
+        const payload = await fetchVehicleTypes({ page: 1, page_size: 200, pageSize: 200 })
         const { list } = normalizeListResult(payload)
         this.typeOptions = (list || []).map((item) => ({
           value: item.id ?? item.type_id ?? item.value,
@@ -312,7 +312,7 @@ export default {
       }
       this.permissionGroupLoading = true
       try {
-        const payload = await requestJson(PERMISSION_GROUPS_PATH)
+        const payload = await fetchPermissionGroups()
         const { list } = normalizeListResult(payload)
         this.permissionGroups = list || []
         if (!this.permissionGroupId && this.permissionGroups.length) {
@@ -345,7 +345,7 @@ export default {
           bind_id: this.permissionGroupId,
           bindId: this.permissionGroupId
         }
-        const payload = await requestJson(DEVICE_BINDING_PATH, { params })
+        const payload = await fetchDeviceBindings(params)
         const { list } = normalizeListResult(payload)
         const groupId = Number(this.permissionGroupId)
         const normalized = (list || [])
@@ -411,7 +411,7 @@ export default {
           page_size: this.query.pageSize,
           pageSize: this.query.pageSize
         }
-        const payload = await requestJson(VEHICLE_PATH, { params })
+        const payload = await fetchVehicleList(params)
         const { list, total } = normalizeListResult(payload)
         this.list = (list || []).map((item) => this.normalizeVehicle(item))
         this.total = total || this.list.length
@@ -478,16 +478,10 @@ export default {
         this.vehicleSubmitting = true
         try {
           if (this.editingId) {
-            await requestJson(`${VEHICLE_PATH}/${this.editingId}`, {
-              method: 'PUT',
-              body: { ...this.vehicleForm, id: this.editingId }
-            })
+            await updateVehicle(this.editingId, this.vehicleForm)
             ElMessage.success('编辑车辆成功')
           } else {
-            await requestJson(VEHICLE_PATH, {
-              method: 'POST',
-              body: { ...this.vehicleForm }
-            })
+            await createVehicle(this.vehicleForm)
             ElMessage.success('新增车辆成功')
           }
           this.vehicleDialogVisible = false
@@ -516,7 +510,7 @@ export default {
       }
       this.loading = true
       try {
-        await requestJson(`${VEHICLE_PATH}/${row.id}`, { method: 'DELETE' })
+        await deleteVehicle(row.id)
         ElMessage.success('删除成功')
         this.loadVehicles()
       } catch (error) {
