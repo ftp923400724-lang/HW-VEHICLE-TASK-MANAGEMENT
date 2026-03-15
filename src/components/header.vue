@@ -34,6 +34,8 @@ import statisticsImg from '../assets/header/1.png'
 import AppCenterImg from '../assets/header/2.png'
 import { ElMessage } from 'element-plus'
 import OfflineStatisticsWindow from '@/window/offlineStatistics.vue'
+import tokenHelper from '@/utils/token'
+import { redirectWithToken } from '@/utils/tokenTransfer'
 
 export default {
   name: 'AppHeader',
@@ -48,14 +50,54 @@ export default {
     }
   },
   methods: {
+    isLocalRuntimeHost(hostname = '') {
+      const normalized = String(hostname || '').trim().toLowerCase()
+      return (
+        normalized === 'localhost' ||
+        normalized === '127.0.0.1' ||
+        normalized === '::1'
+      )
+    },
+    adaptAppCenterUrlByRuntime(targetUrl) {
+      try {
+        const runtimeUrl = new URL(window.location.href)
+        const candidateUrl = new URL(targetUrl, runtimeUrl.origin)
+        const runtimeIsLocal = this.isLocalRuntimeHost(runtimeUrl.hostname)
+        const candidateIsLocal = this.isLocalRuntimeHost(candidateUrl.hostname)
+
+        if (runtimeIsLocal !== candidateIsLocal) {
+          candidateUrl.protocol = runtimeUrl.protocol
+          candidateUrl.hostname = runtimeUrl.hostname
+          if (!candidateUrl.port) {
+            candidateUrl.port = '1011'
+          }
+        }
+
+        return candidateUrl.toString()
+      } catch (error) {
+        return targetUrl
+      }
+    },
+    resolveDefaultAppCenterUrl() {
+      try {
+        const current = new URL(window.location.href)
+        current.port = '1011'
+        current.pathname = '/'
+        current.search = ''
+        current.hash = ''
+        return current.toString()
+      } catch (error) {
+        return ''
+      }
+    },
     jumpToAppCenter(event, target = '_self') {
       try {
-        let redirectUrl = import.meta.env.VITE_REDIRECT_APPCENTER || ''
+        let redirectUrl = import.meta.env.VITE_REDIRECT_APPCENTER || this.resolveDefaultAppCenterUrl()
         console.log('读取到的跳转地址：', redirectUrl)
 
         if (!redirectUrl) {
-          ElMessage.error('未配置应用中心跳转地址（VITE_REDIRECT_APPCENTER）')
-          console.error('错误：VITE_REDIRECT_APPCENTER 环境变量未配置')
+          ElMessage.error('未获取到应用中心地址')
+          console.error('错误：应用中心地址为空')
           return
         }
 
@@ -66,7 +108,7 @@ export default {
           validUrl = new URL(redirectUrl, window.location.origin)
         }
 
-        const finalUrl = validUrl.href
+        const finalUrl = this.adaptAppCenterUrlByRuntime(validUrl.href)
         console.log('最终跳转地址：', finalUrl)
 
         const el = event?.currentTarget
@@ -75,8 +117,13 @@ export default {
           if (el) el.style.pointerEvents = 'auto'
         }, 1000)
 
+        const userToken = tokenHelper.getToken()
+
         if (target === '_self') {
-          window.location.href = finalUrl
+          if (userToken && redirectWithToken(userToken, finalUrl)) {
+            return
+          }
+          window.location.replace(finalUrl)
         } else if (target === '_blank') {
           const newWindow = window.open(finalUrl, '_blank')
           if (!newWindow) {

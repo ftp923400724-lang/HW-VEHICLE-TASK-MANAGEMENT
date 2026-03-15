@@ -26,7 +26,7 @@
 ## 鉴权头策略
 
 - 默认自动注入：
-  - `Access-Token`（来自 `VITE_ACCESS_TOKEN`，或开发态超级管理员 token）。
+  - `AppSecret`（来自 `VITE_APP_SECRET`，并兼容从 URL 参数 `AppSecret/appSecret/accessToken` 注入后缓存）。
   - `User-Token` / `Authorization` / `Api-Auth`（来自 token 工具）。
 - 开发模式可注入：
   - `X-Dev-Super-Admin: 1`（用于本地联调兜底）。
