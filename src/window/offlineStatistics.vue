@@ -1,26 +1,11 @@
 <template>
-  <el-drawer
-    v-model="dialogVisible"
-    title="车辆在离线统计"
-    size="980px"
-    direction="rtl"
-    :close-on-click-modal="false"
-    :append-to-body="true"
-    class="offline-statistics-drawer"
-    modal-class="offline-statistics-drawer-overlay"
-  >
+  <el-drawer v-model="dialogVisible" title="车辆在离线统计" size="980px" direction="rtl" :close-on-click-modal="false"
+    :append-to-body="true" class="offline-statistics-drawer" modal-class="offline-statistics-drawer-overlay">
     <el-form inline class="statistics-form">
       <el-form-item label="时间范围">
-        <el-date-picker
-          v-model="statisticsRange"
-          type="datetimerange"
-          range-separator="-"
-          start-placeholder="开始时间"
-          end-placeholder="结束时间"
-          value-format="YYYY-MM-DD HH:mm:ss"
-          :locale="datePickerLocale"
-          popper-class="offline-statistics-drawer-picker"
-        />
+        <el-date-picker v-model="statisticsRange" type="datetimerange" range-separator="-" start-placeholder="开始时间"
+          end-placeholder="结束时间" value-format="YYYY-MM-DD HH:mm:ss" :locale="datePickerLocale"
+          popper-class="offline-statistics-drawer-picker" />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" :loading="statisticsLoading" @click="queryOfflineStatistics">
@@ -29,11 +14,8 @@
         <el-button :disabled="statisticsLoading" @click="resetStatisticsRange">
           重置
         </el-button>
-        <el-button
-          type="success"
-          :disabled="statisticsLoading || statisticsTableData.length === 0"
-          @click="exportOfflineStatistics"
-        >
+        <el-button type="success" :disabled="statisticsLoading || statisticsTableData.length === 0"
+          @click="exportOfflineStatistics">
           导出Excel
         </el-button>
       </el-form-item>
@@ -41,19 +23,10 @@
 
     <el-alert v-if="statisticsErrorMessage" type="error" show-icon :title="statisticsErrorMessage" />
 
-    <el-table
-      v-loading="statisticsLoading"
-      :data="statisticsTableData"
-      border
-      height="calc(100vh - 280px)"
-      highlight-current-row
-      :loading-text="'正在查询数据...'"
-      class="offline-dark-table"
-      :header-cell-style="getTableHeaderCellStyle"
-      :cell-style="getTableCellStyle"
-      :row-style="getTableRowStyle"
-      :style="tableStyleVars"
-    >
+    <el-table v-loading="statisticsLoading" :data="statisticsTableData" border height="calc(100vh - 280px)"
+      highlight-current-row :loading-text="'正在查询数据...'" class="offline-dark-table"
+      :header-cell-style="getTableHeaderCellStyle" :cell-style="getTableCellStyle" :row-style="getTableRowStyle"
+      :style="tableStyleVars">
       <el-table-column type="index" label="#" width="54" align="center" />
       <el-table-column prop="periodDisplay" label="时间" min-width="180" show-overflow-tooltip align="center" />
       <el-table-column prop="totalCount" label="总车辆(辆)" width="120" align="center" />

@@ -10,6 +10,12 @@
       <el-col :span="18">
         <el-row align="middle" :gutter="20">
           <el-col :span="3">
+            <div class="statistics">
+              <el-image class="statistics-image" :src="statisticsImg" fit="cover" />
+              <div>车辆基本信息</div>
+            </div>
+          </el-col>
+          <el-col :span="3">
             <div class="statistics" @click="offlineStatistics">
               <el-image class="statistics-image" :src="statisticsImg" fit="cover" />
               <div>车辆在离线统计</div>

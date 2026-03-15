@@ -63,26 +63,14 @@
           <el-input v-model.trim="vehicleForm.license_plate" placeholder="请输入车牌号" />
         </el-form-item>
         <el-form-item label="设备号" prop="device_no">
-          <el-select
-            v-model="vehicleForm.device_no"
-            placeholder="请选择设备号"
-            filterable
-            clearable
-            :loading="deviceLoading"
-            :disabled="deviceLoading && !deviceOptions.length"
-          >
+          <el-select v-model="vehicleForm.device_no" placeholder="请选择设备号" filterable clearable :loading="deviceLoading"
+            :disabled="deviceLoading && !deviceOptions.length">
             <el-option label="不绑定设备" value="" />
-            <el-option
-              v-for="item in deviceOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
+            <el-option v-for="item in deviceOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="车辆单位" prop="unit_id">
-          <el-select v-model="vehicleForm.unit_id" placeholder="请选择车辆单位" filterable clearable
-            :loading="unitLoading">
+          <el-select v-model="vehicleForm.unit_id" placeholder="请选择车辆单位" filterable clearable :loading="unitLoading">
             <el-option v-for="item in unitOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
