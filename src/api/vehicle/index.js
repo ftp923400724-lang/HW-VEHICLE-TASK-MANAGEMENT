@@ -8,7 +8,13 @@ export { fetchVehicleList, createVehicle, updateVehicle, deleteVehicle } from '.
 
 export {
   fetchVehicleUnits,
+  createVehicleUnit,
+  updateVehicleUnit,
+  deleteVehicleUnit,
   fetchVehicleTypes,
+  createVehicleType,
+  updateVehicleType,
+  deleteVehicleType,
   fetchPermissionGroups,
   fetchDeviceBindings
 } from './metadata'

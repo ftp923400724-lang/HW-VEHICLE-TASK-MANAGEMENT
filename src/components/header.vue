@@ -10,7 +10,7 @@
       <el-col :span="18">
         <el-row align="middle" :gutter="20">
           <el-col :span="3">
-            <div class="statistics">
+            <div class="statistics" @click="openVehicleStatistics">
               <el-image class="statistics-image" :src="statisticsImg" fit="cover" />
               <div>车辆基本信息</div>
             </div>
@@ -32,6 +32,7 @@
     </el-row>
   </div>
 
+  <VehicleStatisticsWindow v-model:visible="vehicleStatisticsVisible" />
   <OfflineStatisticsWindow v-model:visible="offlineStatisticsVisible" />
 </template>
 
@@ -40,18 +41,21 @@ import statisticsImg from '../assets/header/1.png'
 import AppCenterImg from '../assets/header/2.png'
 import { ElMessage } from 'element-plus'
 import OfflineStatisticsWindow from '@/window/offlineStatistics.vue'
+import VehicleStatisticsWindow from '@/window/vehicleStatistics.vue'
 import tokenHelper from '@/utils/token'
 import { redirectWithToken } from '@/utils/tokenTransfer'
 
 export default {
   name: 'AppHeader',
   components: {
-    OfflineStatisticsWindow
+    OfflineStatisticsWindow,
+    VehicleStatisticsWindow
   },
   data() {
     return {
       statisticsImg,
       AppCenterImg,
+      vehicleStatisticsVisible: false,
       offlineStatisticsVisible: false,
     }
   },
@@ -141,6 +145,9 @@ export default {
         ElMessage.error(`跳转失败：${err.message}`)
         console.error('跳转异常详情：', err)
       }
+    },
+    openVehicleStatistics() {
+      this.vehicleStatisticsVisible = true
     },
     offlineStatistics() {
       this.offlineStatisticsVisible = true
