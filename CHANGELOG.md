@@ -1,0 +1,21 @@
+# Changelog
+
+本文件记录 `TS-VEHICLE-POSITIONING` 的重要变更。
+
+## [Unreleased]
+
+### Added
+
+- 预留未发布变更记录区
+
+## [2026-03-18]
+
+### Added
+
+- 新增子项目级 `CHANGELOG.md`
+- 新增子项目级 `CONTRIBUTING.md`
+- 新增子项目级 `LICENSE.md`
+
+### Notes
+
+- 当前为文档初始化，不涉及定位业务逻辑调整
