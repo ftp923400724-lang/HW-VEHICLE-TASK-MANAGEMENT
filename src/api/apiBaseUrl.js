@@ -30,6 +30,6 @@ export const LOCAL_API_BASE_URL = normalizeBaseUrl(import.meta.env?.VITE_API_BAS
 export const ONLINE_API_BASE_URL = normalizeBaseUrl(import.meta.env?.VITE_API_BASE_URL, '/api')
 
 export const resolveApiBaseUrl = () =>
-  normalizeBaseUrl(import.meta.env?.VITE_API_BASE_URL, '/api')
+  import.meta.env?.DEV ? '/api' : normalizeBaseUrl(import.meta.env?.VITE_API_BASE_URL, '/api')
 
 export const API_BASE_URL = resolveApiBaseUrl()

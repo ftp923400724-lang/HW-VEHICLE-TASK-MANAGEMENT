@@ -1,6 +1,6 @@
 # Contributing
 
-`TS-VEHICLE-POSITIONING` 为车辆定位前端项目。改动时请优先保证地图渲染、轨迹查询与统一鉴权链路兼容。
+`HW-VEHICLE-POSITIONING` 为车辆定位前端项目。改动时请优先保证地图渲染、轨迹查询与统一鉴权链路兼容。
 
 ## 基本要求
 

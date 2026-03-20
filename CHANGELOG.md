@@ -1,6 +1,6 @@
 # Changelog
 
-本文件记录 `TS-VEHICLE-POSITIONING` 的重要变更。
+本文件记录 `HW-VEHICLE-POSITIONING` 的重要变更。
 
 ## [Unreleased]
 

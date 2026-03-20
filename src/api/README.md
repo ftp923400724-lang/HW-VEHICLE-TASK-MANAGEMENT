@@ -1,4 +1,4 @@
-# API 管理说明（TS-VEHICLE-POSITIONING）
+# API 管理说明（HW-VEHICLE-POSITIONING）
 
 本项目 API 管理遵循仓库统一说明（Axios API 管理标准）。
 
