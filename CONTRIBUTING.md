@@ -15,9 +15,14 @@
 - 应用中心跳转进入是否正常
 - 是否影响 `TS-ADMIN-API` 接口字段兼容
 
+## 环境约定
+
+- 本地和线上分别使用 `.env.local` / `.env.online`
+- API 地址统一使用 `VITE_API_BASE_URL`
+- 鉴权密钥优先使用 `VITE_APP_SECRET`
+- 跳转地址优先使用 `VITE_REDIRECT_APPCENTER`
+
 ## 参考文档
 
 - `README.md`
-- `../CONTRIBUTING.md`
 - `../README.md`
-- `../CONTRIBUTING.md`
