@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
+    "playwright": "^1.58.2",
     "vite": "npm:rolldown-vite@7.2.5"
   },
   "overrides": {

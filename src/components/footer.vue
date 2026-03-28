@@ -1,5 +1,16 @@
 <template>
   <div class="panel">
+    <div class="chart__header">
+      <div>
+        <div class="chart__title">{{ activeStationName }}</div>
+        <div class="chart__subtitle">{{ activeStationRemark }}</div>
+      </div>
+      <div class="chart__summary">
+        <span>进站 {{ totalInbound }} 辆</span>
+        <span>出站 {{ totalOutbound }} 辆</span>
+        <span>峰值 {{ peakHour || '暂无' }}</span>
+      </div>
+    </div>
     <div class="chart__wrap">
       <canvas ref="chartRef"></canvas>
     </div>
@@ -7,184 +18,177 @@
 </template>
 
 <script>
-import { defineComponent } from 'vue';
-import Chart from 'chart.js/auto';
-import { fetchHourlyVehicleStatus } from '@/api/vehicle';
+import { defineComponent, markRaw } from 'vue'
+import Chart from 'chart.js/auto'
+import {
+  buildAggregateTransferStationOverview,
+  buildTransferStationOverview,
+  getTransferStationById
+} from '@/utils/transferStation'
 
 export default defineComponent({
   name: 'FooterPanel',
   data() {
     return {
       chart: null,
+      activeStationId: 'aggregate',
+      activeStationName: '全部中转站',
+      activeStationRemark: '模拟汇总进出量',
       hours: Array.from({ length: 24 }, (_, i) => `${i}:00`),
-      onlineCounts: Array(24).fill(0),
-      offlineCounts: Array(24).fill(0),
-      abnormalCounts: Array(24).fill(0),
-      onlineRates: [],
-      loading: false,
-      errorMessage: ''
-    };
-  },
-  computed: {
-    onlineRate() {
-      if (this.onlineRates.length === this.hours.length) {
-        return this.onlineRates;
-      }
-      return this.hours.map((_, index) => {
-        const online = this.onlineCounts[index];
-        const offline = this.offlineCounts[index];
-        const abnormal = this.abnormalCounts[index];
-        const total = online + offline + abnormal;
-        if (!total) return 0;
-        return Number(((online / total) * 100).toFixed(1));
-      });
+      inboundCounts: Array(24).fill(0),
+      outboundCounts: Array(24).fill(0),
+      netFlowCounts: Array(24).fill(0),
+      totalInbound: 0,
+      totalOutbound: 0,
+      peakHour: '',
+      loading: false
     }
   },
   mounted() {
-    this.loadHourlyStatus();
+    this.loadTrafficOverview()
+    window.addEventListener('station-selected', this.handleStationSelected)
   },
   beforeUnmount() {
-    this.destroyChart();
+    window.removeEventListener('station-selected', this.handleStationSelected)
+    this.destroyChart()
   },
   methods: {
     destroyChart() {
       if (this.chart) {
-        this.chart.destroy();
-        this.chart = null;
+        this.chart.destroy()
+        this.chart = null
       }
     },
-    async loadHourlyStatus() {
-      this.loading = true;
-      this.errorMessage = '';
+    handleStationSelected(event) {
+      const detail = event?.detail || {}
+      const stationId = detail?.stationId || detail?.code || detail?.id
+      const overview = this.resolveTrafficOverview(stationId, detail)
+      if (!overview) return
+      this.applyTrafficOverview(overview)
+    },
+    loadTrafficOverview() {
+      this.loading = true
       try {
-        const payload = await fetchHourlyVehicleStatus();
-        this.applyHourlyPayload(payload?.data || {});
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('加载车辆状态统计失败', error);
-        this.errorMessage = '加载失败';
-        this.applyHourlyPayload({});
+        const overview = buildAggregateTransferStationOverview()
+        this.applyTrafficOverview(overview)
       } finally {
-        this.loading = false;
+        this.loading = false
       }
     },
-    applyHourlyPayload(data) {
-      const hours = Array.isArray(data?.hours) ? data.hours : [];
-      if (hours.length) {
-        this.hours = hours.slice(0, 24).map((value) => `${value}:00`);
-      } else if (this.hours.length !== 24) {
-        this.hours = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+    resolveTrafficOverview(stationId, detail = {}) {
+      const station = stationId ? getTransferStationById(stationId) : null
+      if (!station) {
+        return buildAggregateTransferStationOverview()
       }
-
-      this.onlineCounts = this.normalizeCountArray(data?.online_counts ?? data?.onlineCounts);
-      this.offlineCounts = this.normalizeCountArray(data?.offline_counts ?? data?.offlineCounts);
-      this.abnormalCounts = this.normalizeCountArray(data?.abnormal_counts ?? data?.abnormalCounts);
-      this.onlineRates = this.normalizeRateArray(data?.online_rate ?? data?.onlineRate);
-      this.applyChartData();
+      const overview = buildTransferStationOverview(station.id)
+      if (detail?.traffic) {
+        return {
+          ...overview,
+          ...detail.traffic,
+          stationId: detail.stationId || station.id,
+          stationName: detail.stationName || station.name,
+          remark: detail.remark || station.remark,
+          platformCount: detail.platformCount || station.platformCount
+        }
+      }
+      return overview
+    },
+    applyTrafficOverview(overview) {
+      this.activeStationId = overview.stationId || 'aggregate'
+      this.activeStationName = overview.stationName || '全部中转站'
+      this.activeStationRemark = overview.remark || '模拟汇总进出量'
+      this.hours = Array.isArray(overview.hours) && overview.hours.length
+        ? overview.hours.slice(0, 24)
+        : Array.from({ length: 24 }, (_, i) => `${i}:00`)
+      this.inboundCounts = this.normalizeCountArray(overview.inboundCounts)
+      this.outboundCounts = this.normalizeCountArray(overview.outboundCounts)
+      this.netFlowCounts = this.normalizeCountArray(overview.netFlowCounts)
+      this.totalInbound = Number.isFinite(overview.totalInbound) ? overview.totalInbound : this.sumArray(this.inboundCounts)
+      this.totalOutbound = Number.isFinite(overview.totalOutbound) ? overview.totalOutbound : this.sumArray(this.outboundCounts)
+      this.peakHour = overview.peakHour || ''
+      this.applyChartData()
     },
     normalizeCountArray(value) {
       if (!Array.isArray(value)) {
-        return Array(24).fill(0);
+        return Array(24).fill(0)
       }
       const normalized = value.slice(0, 24).map((item) => {
-        const num = Number(item);
-        return Number.isFinite(num) ? num : 0;
-      });
+        const num = Number(item)
+        return Number.isFinite(num) ? num : 0
+      })
       while (normalized.length < 24) {
-        normalized.push(0);
+        normalized.push(0)
       }
-      return normalized;
+      return normalized
     },
-    normalizeRateArray(value) {
-      if (!Array.isArray(value)) {
-        return [];
-      }
-      const normalized = value.slice(0, 24).map((item) => {
-        const num = Number(item);
-        return Number.isFinite(num) ? Number(num.toFixed(1)) : 0;
-      });
-      while (normalized.length < 24) {
-        normalized.push(0);
-      }
-      return normalized;
+    cloneChartSeries(value) {
+      return Array.isArray(value) ? value.slice() : []
+    },
+    sumArray(values) {
+      return values.reduce((sum, value) => sum + value, 0)
     },
     applyChartData() {
       if (!this.chart) {
-        this.renderChart();
-        return;
+        this.renderChart()
+        return
       }
-      this.chart.data.labels = this.hours;
+      this.chart.data.labels = this.cloneChartSeries(this.hours)
       if (this.chart.data.datasets?.[0]) {
-        this.chart.data.datasets[0].data = this.onlineCounts;
+        this.chart.data.datasets[0].data = this.cloneChartSeries(this.inboundCounts)
       }
       if (this.chart.data.datasets?.[1]) {
-        this.chart.data.datasets[1].data = this.offlineCounts;
+        this.chart.data.datasets[1].data = this.cloneChartSeries(this.outboundCounts)
       }
       if (this.chart.data.datasets?.[2]) {
-        this.chart.data.datasets[2].data = this.abnormalCounts;
+        this.chart.data.datasets[2].data = this.cloneChartSeries(this.netFlowCounts)
       }
-      if (this.chart.data.datasets?.[3]) {
-        this.chart.data.datasets[3].data = this.onlineRate;
-      }
-      this.chart.update();
+      this.chart.update()
     },
     renderChart() {
-      const ctx = this.$refs.chartRef?.getContext('2d');
-      if (!ctx) return;
-      this.destroyChart();
+      const ctx = this.$refs.chartRef?.getContext('2d')
+      if (!ctx) return
+      this.destroyChart()
 
-      this.chart = new Chart(ctx, {
+      this.chart = markRaw(new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: this.hours,
+          labels: this.cloneChartSeries(this.hours),
           datasets: [
             {
               type: 'bar',
-              label: '在线车辆',
-              data: this.onlineCounts,
+              label: '进站量',
+              data: this.cloneChartSeries(this.inboundCounts),
               backgroundColor: 'rgba(61, 142, 255, 0.75)',
               borderColor: 'rgba(61, 142, 255, 1)',
               borderWidth: 1,
               borderRadius: 6,
-              stack: 'counts',
-              barPercentage: 0.55,
-              categoryPercentage: 0.7
+              stack: 'traffic',
+              barPercentage: 0.56,
+              categoryPercentage: 0.72
             },
             {
               type: 'bar',
-              label: '离线车辆',
-              data: this.offlineCounts,
-              backgroundColor: 'rgba(113, 135, 160, 0.65)',
-              borderColor: 'rgba(113, 135, 160, 1)',
+              label: '出站量',
+              data: this.outboundCounts,
+              backgroundColor: 'rgba(255, 145, 77, 0.68)',
+              borderColor: 'rgba(255, 145, 77, 1)',
               borderWidth: 1,
               borderRadius: 6,
-              stack: 'counts',
-              barPercentage: 0.55,
-              categoryPercentage: 0.7
-            },
-            {
-              type: 'bar',
-              label: '异常车辆',
-              data: this.abnormalCounts,
-              backgroundColor: 'rgba(255, 99, 132, 0.7)',
-              borderColor: 'rgba(255, 99, 132, 1)',
-              borderWidth: 1,
-              borderRadius: 6,
-              stack: 'counts',
-              barPercentage: 0.55,
-              categoryPercentage: 0.7
+              stack: 'traffic',
+              barPercentage: 0.56,
+              categoryPercentage: 0.72
             },
             {
               type: 'line',
-              label: '在线率',
-              data: this.onlineRate,
+              label: '净流量',
+              data: this.netFlowCounts,
               yAxisID: 'y1',
               borderColor: 'rgba(46, 204, 113, 1)',
-              backgroundColor: 'rgba(46, 204, 113, 0.2)',
+              backgroundColor: 'rgba(46, 204, 113, 0.18)',
               borderWidth: 2,
               tension: 0.3,
-              pointRadius: 4,
-              pointHoverRadius: 6,
+              pointRadius: 3,
+              pointHoverRadius: 5,
               fill: false
             }
           ]
@@ -193,14 +197,12 @@ export default defineComponent({
           responsive: true,
           maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
-          // 1. 核心：图表整体内边距（画布内）
           layout: {
             padding: {
-              top: 10,     // 顶部内边距（px）
-              right: 20,   // 右侧内边距（适配右侧y1轴）
-              bottom: 10,  // 底部内边距（适配x轴标签）
-              left: 20,    // 左侧内边距
-              // 简写：padding: 20 (四周边距统一为20px)
+              top: 8,
+              right: 18,
+              bottom: 8,
+              left: 18
             }
           },
           scales: {
@@ -216,13 +218,11 @@ export default defineComponent({
             },
             y1: {
               position: 'right',
-              beginAtZero: true,
-              min: 0,
-              max: 100,
+              beginAtZero: false,
               grid: { drawOnChartArea: false },
               ticks: {
                 color: '#2ecc71',
-                callback: (value) => `${value}%`
+                callback: (value) => `${value}`
               }
             }
           },
@@ -237,30 +237,26 @@ export default defineComponent({
               padding: 10,
               callbacks: {
                 label: (context) => {
-                  const label = context.dataset.label || '';
-                  const value = context.parsed.y;
-                  if (label === '在线率') {
-                    return `${label}: ${value.toFixed(1)}%`;
-                  }
-                  return `${label}: ${value} 辆`;
+                  const label = context.dataset.label || ''
+                  const value = context.parsed.y
+                  return `${label}: ${value} 辆`
                 },
                 footer: (items) => {
-                  if (!items.length) return '';
-                  const idx = items[0].dataIndex;
-                  const online = this.onlineCounts[idx];
-                  const offline = this.offlineCounts[idx];
-                  const abnormal = this.abnormalCounts[idx];
-                  const rate = this.onlineRate[idx];
-                  return `在线 ${online} 辆 | 离线 ${offline} 辆 | 异常 ${abnormal} 辆 | 在线率 ${rate}%`;
+                  if (!items.length) return ''
+                  const idx = items[0].dataIndex
+                  const inbound = this.inboundCounts[idx]
+                  const outbound = this.outboundCounts[idx]
+                  const net = this.netFlowCounts[idx]
+                  return `进站 ${inbound} 辆 | 出站 ${outbound} 辆 | 净流量 ${net} 辆`
                 }
               }
             }
           }
         }
-      });
+      }))
     }
   }
-});
+})
 </script>
 
 <style scoped>
@@ -275,9 +271,40 @@ export default defineComponent({
   color: #eaeff7;
 }
 
+.chart__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chart__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.chart__subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9aa1b5;
+}
+
+.chart__summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #c8d3e0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .chart__wrap {
-  height: 100%;
+  flex: 1;
   width: 100%;
+  min-height: 0;
 }
 
 canvas {

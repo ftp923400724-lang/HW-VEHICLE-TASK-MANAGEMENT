@@ -142,6 +142,9 @@ export default {
       start.setHours(0, 0, 0, 0)
       return [this.formatDateTime(start), this.formatDateTime(now)]
     },
+    formatDate(date) {
+      return this.formatDateTime(date)
+    },
     formatDateTime(date) {
       if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
         return ''

@@ -18,6 +18,7 @@ import { ElTag } from 'element-plus'
 import { normalizeListResult } from '@/api/http'
 import { fetchRealtimeVehicles, fetchVehicleUnits, fetchVehicleTypes } from '@/api/vehicle'
 import { extractDeviceKey, hasValidCoordinates } from '@/utils/vehicle'
+import { getTransferStationTreeGroup } from '@/utils/transferStation'
 
 const ONLINE_THRESHOLD_MINUTES = 5
 const OFFLINE_ABNORMAL_THRESHOLD_MINUTES = 30 * 24 * 60
@@ -60,7 +61,7 @@ export default {
         const payload = await fetchRealtimeVehicles()
         const vehicles = normalizeListResult(payload).list
 
-        this.fullTreeData = this.buildHierarchicalTree(vehicles)
+        this.fullTreeData = this.buildTreeData(vehicles)
         this.treeData = this.filterTreeByStatus(this.selectedStatus)
       } catch (error) {
         // eslint-disable-next-line no-console
@@ -78,11 +79,31 @@ export default {
       if (!value) return true
       const keyword = String(value).trim()
       if (!keyword) return true
-      return [data.label, data.licensePlate, data.deviceNo]
+      return [data.label, data.licensePlate, data.deviceNo, data.code, data.stationId]
         .map((v) => (v ? String(v) : ''))
         .some((text) => text.includes(keyword))
     },
     renderTreeNode(hRender, { data }) {
+      if (data.type === 'station-group') {
+        return hRender('span', { class: 'tree-label tree-group-label' }, data.label)
+      }
+
+      if (data.type === 'station') {
+        const statusEl = hRender('span', { class: 'tree-node-status' }, [
+          hRender(ElTag, { size: 'small', type: 'primary', effect: 'plain' }, () => '中转站')
+        ])
+        const labelEl = hRender('span', { class: 'tree-label tree-node-label' }, data.label)
+        const timeEl = data.suffixText
+          ? hRender('span', { class: 'tree-node-right time-text' }, data.suffixText)
+          : hRender('span', { class: 'tree-node-right tree-node-right--placeholder' }, '')
+
+        return hRender('div', { class: 'tree-node-container station-node' }, [
+          statusEl,
+          labelEl,
+          timeEl
+        ])
+      }
+
       // 非车辆节点，保持默认样式
       if (data.type !== 'vehicle') {
         return hRender('span', { class: 'tree-label' }, data.label)
@@ -112,6 +133,15 @@ export default {
       ])
     },
     handleNodeClick(node) {
+      if (node.type === 'station') {
+        const detail = node.option || {}
+        try {
+          window.dispatchEvent(new CustomEvent('station-selected', { detail }))
+        } catch (_) {
+          // ignore
+        }
+        return
+      }
       if (node.type !== 'vehicle') return
       const detail = node.option || {}
       try {
@@ -204,6 +234,9 @@ export default {
         })
         .filter((unitNode) => unitNode.children.length)
         .sort(this.compareNodesBySortThenLabel)
+    },
+    buildTreeData(vehicles) {
+      return [getTransferStationTreeGroup(), ...this.buildHierarchicalTree(vehicles)]
     },
     async ensureSortMetadata() {
       if (this.sortMetadataLoaded) return
@@ -378,6 +411,12 @@ export default {
         return this.fullTreeData
       }
       const cloneNode = (node) => {
+        if (node.type === 'station-group') {
+          return { ...node, children: (node.children || []).map((child) => ({ ...child })) }
+        }
+        if (node.type === 'station') {
+          return { ...node }
+        }
         if (node.type === 'vehicle') {
           return node.statusKey === targetStatus ? { ...node } : null
         }
@@ -472,6 +511,11 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+:deep(.tree-group-label) {
+  color: #ffd166;
+  font-weight: 600;
 }
 
 .tree-status-tag {
