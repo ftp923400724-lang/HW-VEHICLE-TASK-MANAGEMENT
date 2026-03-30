@@ -6,6 +6,18 @@ export const toFiniteNumber = (value) => {
   return Number.isFinite(num) ? num : NaN
 }
 
+export const normalizeGpsCoordinate = (value, axis = 'lon') => {
+  const num = toFiniteNumber(value)
+  if (!Number.isFinite(num)) return NaN
+  const limit = axis === 'lat' ? 90 : 180
+  if (Math.abs(num) <= limit) return num
+  if (Math.abs(num) >= 1000) {
+    const scaled = num / 10000000
+    if (Math.abs(scaled) <= limit) return scaled
+  }
+  return num
+}
+
 export const extractDeviceKey = (record) => {
   if (!record) return ''
   const candidates = [
@@ -25,7 +37,7 @@ export const extractDeviceKey = (record) => {
 }
 
 export const hasValidCoordinates = (record) => {
-  const lon = toFiniteNumber(record?.lon ?? record?.lng ?? record?.longitude)
-  const lat = toFiniteNumber(record?.lat ?? record?.latitude)
+  const lon = normalizeGpsCoordinate(record?.lon ?? record?.lng ?? record?.longitude, 'lon')
+  const lat = normalizeGpsCoordinate(record?.lat ?? record?.latitude, 'lat')
   return Number.isFinite(lon) && Number.isFinite(lat)
 }

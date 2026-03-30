@@ -16,12 +16,12 @@
 <script>
 import { ElTag } from 'element-plus'
 import { normalizeListResult } from '@/api/http'
-import { fetchRealtimeVehicles, fetchVehicleUnits, fetchVehicleTypes } from '@/api/vehicle'
+import { fetchRealtimeVehicles, fetchVehicleList, fetchVehicleUnits, fetchVehicleTypes } from '@/api/vehicle'
 import { extractDeviceKey, hasValidCoordinates } from '@/utils/vehicle'
-import { getTransferStationTreeGroup } from '@/utils/transferStation'
 
 const ONLINE_THRESHOLD_MINUTES = 5
 const OFFLINE_ABNORMAL_THRESHOLD_MINUTES = 30 * 24 * 60
+const POLL_INTERVAL = 60000
 
 export default {
   name: 'VehicleTree',
@@ -41,11 +41,16 @@ export default {
       unitSortMap: new Map(),
       typeSortMap: new Map(),
       sortMetadataLoaded: false,
-      loading: false
+      loading: false,
+      refreshTimer: null
     }
   },
   mounted() {
     this.loadVehicleTree()
+    this.startPolling()
+  },
+  beforeUnmount() {
+    this.stopPolling()
   },
   watch: {
     filterText(val) {
@@ -58,10 +63,26 @@ export default {
       this.loading = true
       try {
         await this.ensureSortMetadata()
-        const payload = await fetchRealtimeVehicles()
-        const vehicles = normalizeListResult(payload).list
-
-        this.fullTreeData = this.buildTreeData(vehicles)
+        const [vehiclePayload, realtimePayload] = await Promise.all([
+          fetchVehicleList({ page: 1, page_size: 9999, pageSize: 9999 }),
+          fetchRealtimeVehicles()
+        ])
+        const vehicles = normalizeListResult(vehiclePayload).list
+        const realtimeRecords = normalizeListResult(realtimePayload).list
+        const realtimeMap = new Map()
+        realtimeRecords.forEach((record) => {
+          const deviceNo = extractDeviceKey(record)
+          if (!deviceNo) return
+          realtimeMap.set(deviceNo, record)
+        })
+        const mergedVehicles = vehicles.map((vehicle) => {
+          const deviceNo = extractDeviceKey(vehicle)
+          const realtimeRecord = deviceNo ? realtimeMap.get(deviceNo) : null
+          return realtimeRecord
+            ? { ...vehicle, ...realtimeRecord, device_no: deviceNo }
+            : { ...vehicle, device_no: deviceNo }
+        })
+        this.fullTreeData = this.buildTreeData(mergedVehicles)
         this.treeData = this.filterTreeByStatus(this.selectedStatus)
       } catch (error) {
         // eslint-disable-next-line no-console
@@ -72,6 +93,18 @@ export default {
         this.loading = false
       }
     },
+    startPolling() {
+      this.stopPolling()
+      this.refreshTimer = window.setInterval(() => {
+        this.loadVehicleTree()
+      }, POLL_INTERVAL)
+    },
+    stopPolling() {
+      if (this.refreshTimer) {
+        window.clearInterval(this.refreshTimer)
+        this.refreshTimer = null
+      }
+    },
     handleStatusChange() {
       this.treeData = this.filterTreeByStatus(this.selectedStatus)
     },
@@ -79,31 +112,11 @@ export default {
       if (!value) return true
       const keyword = String(value).trim()
       if (!keyword) return true
-      return [data.label, data.licensePlate, data.deviceNo, data.code, data.stationId]
+      return [data.label, data.licensePlate, data.deviceNo, data.code]
         .map((v) => (v ? String(v) : ''))
         .some((text) => text.includes(keyword))
     },
     renderTreeNode(hRender, { data }) {
-      if (data.type === 'station-group') {
-        return hRender('span', { class: 'tree-label tree-group-label' }, data.label)
-      }
-
-      if (data.type === 'station') {
-        const statusEl = hRender('span', { class: 'tree-node-status' }, [
-          hRender(ElTag, { size: 'small', type: 'primary', effect: 'plain' }, () => '中转站')
-        ])
-        const labelEl = hRender('span', { class: 'tree-label tree-node-label' }, data.label)
-        const timeEl = data.suffixText
-          ? hRender('span', { class: 'tree-node-right time-text' }, data.suffixText)
-          : hRender('span', { class: 'tree-node-right tree-node-right--placeholder' }, '')
-
-        return hRender('div', { class: 'tree-node-container station-node' }, [
-          statusEl,
-          labelEl,
-          timeEl
-        ])
-      }
-
       // 非车辆节点，保持默认样式
       if (data.type !== 'vehicle') {
         return hRender('span', { class: 'tree-label' }, data.label)
@@ -133,15 +146,6 @@ export default {
       ])
     },
     handleNodeClick(node) {
-      if (node.type === 'station') {
-        const detail = node.option || {}
-        try {
-          window.dispatchEvent(new CustomEvent('station-selected', { detail }))
-        } catch (_) {
-          // ignore
-        }
-        return
-      }
       if (node.type !== 'vehicle') return
       const detail = node.option || {}
       try {
@@ -236,7 +240,7 @@ export default {
         .sort(this.compareNodesBySortThenLabel)
     },
     buildTreeData(vehicles) {
-      return [getTransferStationTreeGroup(), ...this.buildHierarchicalTree(vehicles)]
+      return this.buildHierarchicalTree(vehicles)
     },
     async ensureSortMetadata() {
       if (this.sortMetadataLoaded) return
@@ -341,7 +345,7 @@ export default {
       }
 
       if (!hasValidCoordinates(vehicle)) {
-        return { statusKey: 'abnormal', label: plate, suffixText: '缺失经纬度', option }
+        return { statusKey: 'abnormal', label: plate, suffixText: '暂无实时数据', option }
       }
 
       const timestamp = this.extractTimestamp(vehicle)
@@ -411,12 +415,6 @@ export default {
         return this.fullTreeData
       }
       const cloneNode = (node) => {
-        if (node.type === 'station-group') {
-          return { ...node, children: (node.children || []).map((child) => ({ ...child })) }
-        }
-        if (node.type === 'station') {
-          return { ...node }
-        }
         if (node.type === 'vehicle') {
           return node.statusKey === targetStatus ? { ...node } : null
         }
