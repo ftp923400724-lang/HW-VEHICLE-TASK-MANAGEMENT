@@ -493,7 +493,7 @@ export default {
 }
 
 :deep(.tree-node-right) {
-  font-size: 12px;
+  font-size: 10px;
   color: #9aa1b5;
   white-space: nowrap;
   text-align: right;
@@ -516,24 +516,6 @@ export default {
   font-weight: 600;
 }
 
-.tree-status-tag {
-  line-height: 1;
-}
-
-.plate-number {
-  font-size: 14px;
-  color: #ffffff;
-  font-weight: 500;
-}
-
-.time-text {
-  font-size: 8px !important;
-  color: #909399;
-  line-height: 1;
-  margin-left: 8px;
-  white-space: nowrap;
-}
-
 :deep(.status-select .el-select__wrapper),
 :deep(.custom-input .el-input__wrapper) {
   background-color: rgba(30, 41, 59, 0.5);
@@ -547,7 +529,7 @@ export default {
 :deep(.custom-input .el-input__inner) {
   color: #ffffff;
   padding: 0;
-  font-size: 13px;
+  font-size: 12px;
   background: transparent;
   border: none;
   box-shadow: none;
@@ -556,7 +538,7 @@ export default {
 :deep(.status-select .el-select__placeholder),
 :deep(.custom-input .el-input__inner::placeholder) {
   color: #99a3b8;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 :deep(.status-select .el-select__icon),
@@ -596,7 +578,7 @@ export default {
 :deep(.status-select .el-select-dropdown__item) {
   color: #ffffff;
   padding: 6px 16px;
-  font-size: 13px;
+  font-size: 12px;
   transition: background-color 0.2s;
 }
 
@@ -621,7 +603,7 @@ export default {
 
 :deep(.custom-tree .el-tree-node__label) {
   color: #ffffff;
-  font-size: 13px;
+  font-size: 12px;
   transition: color 0.2s;
 }
 
