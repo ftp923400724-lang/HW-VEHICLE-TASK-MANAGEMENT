@@ -1,16 +1,17 @@
 <template>
   <div class="panel">
     <div ref="mapContainer" class="map"></div>
+    <div ref="markerOverlay" class="marker-overlay"></div>
   </div>
 </template>
 
 <script>
 window._AMapSecurityConfig = { securityJsCode: import.meta.env.VITE_AMAP_SECURITY_CODE }
 import AMapLoader from '@amap/amap-jsapi-loader'
-import carIcon from '@/assets/main/car.png'
 import { normalizeListResult } from '@/api/http'
 import { fetchRealtimeVehicles } from '@/api/vehicle'
 import { extractDeviceKey, normalizeGpsCoordinate } from '@/utils/vehicle'
+import ThreeVehicleMarkerLayer from '../../../shared/map-marker/threeVehicleMarkerLayer.js'
 
 const POLL_INTERVAL = 60000
 
@@ -21,11 +22,12 @@ export default {
       mapInstance: null,
       pollTimer: null,
       AMap: null,
-      markers: Object.create(null),
+      markerLayer: null,
+      markerStates: Object.create(null),
       focusedDeviceNo: '',
       hasCentered: false,
       infoWindow: null,
-      selectedDetail: null
+      selectedDetail: null,
     }
   },
   async mounted() {
@@ -37,6 +39,7 @@ export default {
     this.teardownPolling()
     window.removeEventListener('vehicle-selected', this.handleVehicleSelected)
     this.clearMarkers()
+    this.destroyMarkerLayer()
     if (this.mapInstance) {
       this.mapInstance.destroy()
       this.mapInstance = null
@@ -66,6 +69,7 @@ export default {
           rotateEnable: false,
           isHotspot: false,
         })
+        this.initMarkerLayer()
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('初始化地图失败', error)
@@ -77,6 +81,7 @@ export default {
       if (!deviceNo) return
       this.focusedDeviceNo = String(deviceNo)
       this.selectedDetail = detail
+      this.syncFocusedMarker()
       this.focusOnDevice()
       this.openInfoWindowForDevice(this.focusedDeviceNo, detail?.rawVehicle || detail?.rawRealtime || detail)
     },
@@ -127,6 +132,7 @@ export default {
         this.upsertMarker(vehicle)
       })
       this.pruneMarkers(activeKeys)
+      this.syncFocusedMarker()
       if (!this.hasCentered && visiblePositions.length) {
         this.mapInstance.setCenter(visiblePositions[0])
         this.hasCentered = true
@@ -149,62 +155,78 @@ export default {
       }
     },
     upsertMarker(vehicle) {
-      let marker = this.markers[vehicle.key]
-      if (!marker) {
-        marker = this.createMarker(vehicle.position)
-        this.markers[vehicle.key] = marker
-      } else {
-        marker.setPosition(vehicle.position)
+      if (!vehicle?.key || !vehicle?.position) return
+      this.markerStates[vehicle.key] = {
+        key: vehicle.key,
+        position: vehicle.position,
+        record: vehicle.record,
       }
-      marker.setExtData?.(vehicle.record)
-      this.updateMarkerTitle(marker, vehicle.record)
+      const labelText = this.buildMarkerLabel(vehicle.record)
+      this.markerLayer?.upsertMarker(vehicle.key, vehicle.position, vehicle.record, labelText)
     },
-    createMarker(position) {
-      const marker = new this.AMap.Marker({
-        position,
+    buildMarkerLabel(record) {
+      const formatText = (value) => String(value ?? '').replace(/[-_]/g, '·').trim()
+      return (
+        formatText(record?.license_plate) ||
+        formatText(record?.vehicle_name) ||
+        formatText(record?.vehicleName) ||
+        formatText(record?.name) ||
+        formatText(record?.device_no) ||
+        formatText(record?.deviceNo) ||
+        formatText(record?.point_name) ||
+        formatText(record?.pointName) ||
+        formatText(record?.location_name) ||
+        formatText(record?.locationName) ||
+        formatText(record?.site_name) ||
+        formatText(record?.siteName) ||
+        formatText(record?.poi_name) ||
+        formatText(record?.poiName) ||
+        '定位点名称'
+      )
+    },
+    initMarkerLayer() {
+      if (!this.mapInstance || !this.$refs.markerOverlay) return
+      this.destroyMarkerLayer()
+      this.markerLayer = new ThreeVehicleMarkerLayer({
         map: this.mapInstance,
-        icon: new this.AMap.Icon({
-          size: new this.AMap.Size(30, 60),
-          image: carIcon,
-          imageSize: new this.AMap.Size(30, 60),
-        }),
-        offset: new this.AMap.Pixel(-15, -60),
-        autoRotation: true,
-        angle: 0,
+        container: this.$refs.markerOverlay,
+        onClick: this.handleMarkerClick,
       })
-      marker.on?.('click', () => {
-        const record = marker.getExtData?.()
-        this.openInfoWindow(marker, record)
-      })
-      return marker
+      this.syncFocusedMarker()
     },
-    updateMarkerTitle(marker, record) {
-      const title = this.buildMarkerTitle(record)
-      if (title) {
-        marker.setTitle?.(title)
-      }
+    destroyMarkerLayer() {
+      if (!this.markerLayer) return
+      this.markerLayer.dispose()
+      this.markerLayer = null
     },
-    buildMarkerTitle(record) {
-      const plate = record?.license_plate || record?.vehicle_name || record?.vehicleName || record?.name
-      const unit = record?.unit_name || record?.unitName || record?.unit
-      const type = record?.vehicle_type_name || record?.vehicleTypeName || record?.type_name || record?.type
-      return [plate, unit, type].filter(Boolean).join(' | ')
+    handleMarkerClick(deviceNo) {
+      if (!deviceNo) return
+      this.focusedDeviceNo = String(deviceNo)
+      this.syncFocusedMarker()
+      const state = this.markerStates[this.focusedDeviceNo]
+      const record = state?.record || this.selectedDetail?.rawVehicle || this.selectedDetail?.rawRealtime || this.selectedDetail
+      this.selectedDetail = record
+      this.focusOnDevice()
+      this.openInfoWindowForDevice(this.focusedDeviceNo, record)
+    },
+    syncFocusedMarker() {
+      if (!this.markerLayer) return
+      this.markerLayer.setFocusedKey(this.focusedDeviceNo)
     },
     focusOnDevice() {
       if (!this.focusedDeviceNo) return
-      const marker = this.markers[this.focusedDeviceNo]
-      if (!marker) return
-      const position = marker.getPosition?.()
-      if (position) {
-        this.mapInstance.setCenter([position.lng, position.lat])
+      const markerState = this.markerStates[this.focusedDeviceNo]
+      const position = markerState?.position
+      if (position && this.mapInstance) {
+        this.mapInstance.setCenter(position)
       }
     },
     openInfoWindowForDevice(deviceNo, fallbackRecord) {
       if (!deviceNo) return
-      const marker = this.markers[deviceNo]
-      if (marker) {
-        const record = marker.getExtData?.() || fallbackRecord
-        this.openInfoWindow(marker, record)
+      const markerState = this.markerStates[deviceNo]
+      if (markerState) {
+        const record = markerState.record || fallbackRecord
+        this.openInfoWindow(markerState, record)
         return
       }
       if (!fallbackRecord || !this.mapInstance) return
@@ -222,19 +244,20 @@ export default {
       if (!this.AMap || !this.mapInstance) return
       if (this.infoWindow) return
       this.infoWindow = new this.AMap.InfoWindow({
+        isCustom: true,
         offset: new this.AMap.Pixel(0, -60),
         closeWhenClickMap: true,
         autoMove: true,
       })
     },
-    openInfoWindow(marker, record) {
-      if (!marker || !record) return
+    openInfoWindow(markerState, record) {
+      if (!markerState || !record) return
       this.ensureInfoWindow()
       if (!this.infoWindow) return
       const content = this.buildInfoWindowContent(record)
       if (!content) return
       this.infoWindow.setContent(content)
-      const position = marker.getPosition?.()
+      const position = markerState.position
       if (position) {
         this.infoWindow.open(this.mapInstance, position)
       }
@@ -268,30 +291,35 @@ export default {
         )
         .join('')
       return (
-        `<div style="background:#0b1220;` +
-        `padding:10px 12px;min-width:220px;` +
+        `<div style="position:relative;min-width:220px;max-width:260px;padding:10px 10px 9px;border-radius:14px;` +
+        `background:linear-gradient(180deg, rgba(10,18,34,0.98), rgba(4,10,20,0.98));` +
+        `border:1px solid rgba(96,165,250,0.22);` +
+        `box-shadow:0 18px 40px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,255,255,0.03);` +
+        `backdrop-filter:blur(6px);` +
         `">` +
-        `<div style="font-size:14px;font-weight:600;color:#ffffff;margin-bottom:6px;">${escapeHtml(title)}</div>` +
+        `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;">` +
+        `<div style="min-width:0;">` +
+        `<div style="font-size:13px;font-weight:700;color:#f4f9ff;letter-spacing:0.4px;line-height:1.2;">${escapeHtml(title)}</div>` +
+        `<div style="margin-top:3px;font-size:11px;color:#7f93ab;">实时车辆定位与状态信息</div>` +
+        `</div>` +
+        `<div style="flex-shrink:0;padding:3px 8px;border-radius:999px;border:1px solid rgba(55, 210, 138, 0.28);background:rgba(55, 210, 138, 0.12);color:#37d28a;font-size:11px;line-height:1;">在线</div>` +
+        `</div>` +
         `${rowHtml}` +
         `</div>`
       )
     },
     pruneMarkers(activeKeys) {
-      Object.keys(this.markers).forEach((key) => {
+      Object.keys(this.markerStates).forEach((key) => {
         if (activeKeys.has(key)) return
-        const marker = this.markers[key]
-        marker?.setMap?.(null)
-        marker?.destroy?.()
-        delete this.markers[key]
+        this.markerLayer?.removeMarker(key)
+        delete this.markerStates[key]
       })
     },
     clearMarkers() {
-      Object.keys(this.markers).forEach((key) => {
-        const marker = this.markers[key]
-        marker?.setMap?.(null)
-        marker?.destroy?.()
+      Object.keys(this.markerStates).forEach((key) => {
+        this.markerLayer?.removeMarker(key)
       })
-      this.markers = Object.create(null)
+      this.markerStates = Object.create(null)
       this.infoWindow?.close?.()
     },
   },
@@ -303,10 +331,17 @@ export default {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .map {
   width: 100%;
   height: 100%;
+}
+
+.marker-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 </style>
