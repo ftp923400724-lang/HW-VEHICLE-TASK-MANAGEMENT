@@ -3,22 +3,22 @@
     <el-row class="row-bg" align="middle" justify="space-between">
       <el-col :span="4">
         <div>
-          <div class="title-cn">车辆定位管理</div>
-          <div class="title-en">Vehicle Management Center</div>
+          <div class="title-cn">车辆任务管理</div>
+          <div class="title-en">Vehicle Task Management Center</div>
         </div>
       </el-col>
       <el-col :span="18">
         <el-row align="middle" :gutter="20">
           <el-col :span="3">
-            <div class="statistics" @click="openVehicleStatistics">
-              <el-image class="statistics-image" :src="statisticsImg" fit="cover" />
-              <div>车辆基本信息</div>
+            <div class="statistics" @click="taskOrderStatistics">
+              <el-image class="statistics-image" :src="taskOrderImg" fit="cover" />
+              <div>车辆任务单</div>
             </div>
           </el-col>
           <el-col :span="3">
-            <div class="statistics" @click="offlineStatistics">
-              <el-image class="statistics-image" :src="statisticsImg" fit="cover" />
-              <div>车辆在离线统计</div>
+            <div class="statistics" @click="workTypeStatistics">
+              <el-image class="statistics-image" :src="workTypeImg" fit="cover" />
+              <div>车辆作业类型</div>
             </div>
           </el-col>
         </el-row>
@@ -32,94 +32,75 @@
     </el-row>
   </div>
 
-  <VehicleStatisticsWindow v-model:visible="vehicleStatisticsVisible" />
-  <OfflineStatisticsWindow v-model:visible="offlineStatisticsVisible" />
+  <VehicleWorkTypeWindow v-model:visible="workTypeDialogVisible" />
+  <VehicleTaskOrderDrawer v-model:visible="taskOrderDialogVisible" />
 </template>
 
 <script>
-import statisticsImg from '../assets/header/1.png'
+import workTypeImg from '../assets/header/1.png'
 import AppCenterImg from '../assets/header/2.png'
-import { ElMessage } from 'element-plus'
-import OfflineStatisticsWindow from '@/window/offlineStatistics.vue'
-import VehicleStatisticsWindow from '@/window/vehicleStatistics.vue'
-import tokenHelper from '@/utils/token'
-import { redirectWithToken } from '@/utils/tokenTransfer'
+import { ElNotification } from 'element-plus'
+import VehicleWorkTypeWindow from '@/window/vehicleWorkType.vue'
+import VehicleTaskOrderDrawer from '@/window/vehicleTaskOrderDrawer.vue'
 
 export default {
   name: 'AppHeader',
   components: {
-    OfflineStatisticsWindow,
-    VehicleStatisticsWindow
+    VehicleWorkTypeWindow,
+    VehicleTaskOrderDrawer,
   },
   data() {
     return {
-      statisticsImg,
+      workTypeImg,
+      taskOrderImg: workTypeImg,
       AppCenterImg,
-      vehicleStatisticsVisible: false,
-      offlineStatisticsVisible: false,
+      workTypeDialogVisible: false,
+      taskOrderDialogVisible: false,
     }
   },
   methods: {
-    isLocalRuntimeHost(hostname = '') {
-      const normalized = String(hostname || '').trim().toLowerCase()
+    isLocalOrIntranetHost(hostname) {
+      if (!hostname) {
+        return false
+      }
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+        return true
+      }
       return (
-        normalized === 'localhost' ||
-        normalized === '127.0.0.1' ||
-        normalized === '::1'
+        /^10\./.test(hostname) ||
+        /^192\.168\./.test(hostname) ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
       )
-    },
-    adaptAppCenterUrlByRuntime(targetUrl) {
-      try {
-        const runtimeUrl = new URL(window.location.href)
-        const candidateUrl = new URL(targetUrl, runtimeUrl.origin)
-        const runtimeIsLocal = this.isLocalRuntimeHost(runtimeUrl.hostname)
-        const candidateIsLocal = this.isLocalRuntimeHost(candidateUrl.hostname)
-
-        if (runtimeIsLocal !== candidateIsLocal) {
-          candidateUrl.protocol = runtimeUrl.protocol
-          candidateUrl.hostname = runtimeUrl.hostname
-          if (!candidateUrl.port) {
-            candidateUrl.port = '1011'
-          }
-        }
-
-        return candidateUrl.toString()
-      } catch (error) {
-        return targetUrl
-      }
-    },
-    resolveDefaultAppCenterUrl() {
-      try {
-        const current = new URL(window.location.href)
-        current.port = '1011'
-        current.pathname = '/'
-        current.search = ''
-        current.hash = ''
-        return current.toString()
-      } catch (error) {
-        return ''
-      }
     },
     jumpToAppCenter(event, target = '_self') {
       try {
-        let redirectUrl = import.meta.env.VITE_REDIRECT_APPCENTER || this.resolveDefaultAppCenterUrl()
-        console.log('读取到的跳转地址：', redirectUrl)
-
+        const redirectUrl = import.meta.env.VITE_REDIRECT_APPCENTER || ''
         if (!redirectUrl) {
-          ElMessage.error('未获取到应用中心地址')
-          console.error('错误：应用中心地址为空')
+          ElNotification({
+            title: '提示',
+            message: '未配置应用中心跳转地址（VITE_REDIRECT_APPCENTER）',
+            type: 'error',
+          })
           return
         }
 
-        let validUrl
-        if (redirectUrl.startsWith('http')) {
-          validUrl = new URL(redirectUrl)
+        let targetUrl
+        if (/^https?:\/\//i.test(redirectUrl)) {
+          targetUrl = new URL(redirectUrl)
         } else {
-          validUrl = new URL(redirectUrl, window.location.origin)
+          targetUrl = new URL(redirectUrl, window.location.origin)
         }
 
-        const finalUrl = this.adaptAppCenterUrlByRuntime(validUrl.href)
-        console.log('最终跳转地址：', finalUrl)
+        const runtimeUrl = new URL(window.location.href)
+        const runtimeIsLocal = this.isLocalOrIntranetHost(runtimeUrl.hostname)
+        const targetIsLocal = this.isLocalOrIntranetHost(targetUrl.hostname)
+
+        // Keep same-environment redirect to avoid local/prod cross-jump.
+        if (runtimeIsLocal !== targetIsLocal) {
+          targetUrl = new URL(runtimeIsLocal ? 'http://127.0.0.1:1011' : 'http://119.91.132.25:1011')
+        }
+
+        const finalUrl = targetUrl.href
 
         const el = event?.currentTarget
         if (el) el.style.pointerEvents = 'none'
@@ -127,31 +108,37 @@ export default {
           if (el) el.style.pointerEvents = 'auto'
         }, 1000)
 
-        const userToken = tokenHelper.getToken()
-
         if (target === '_self') {
-          if (userToken && redirectWithToken(userToken, finalUrl)) {
-            return
-          }
-          window.location.replace(finalUrl)
+          window.location.href = finalUrl
         } else if (target === '_blank') {
           const newWindow = window.open(finalUrl, '_blank')
           if (!newWindow) {
-            ElMessage.warning('浏览器拦截了新窗口，请允许弹窗后重试')
-            ElMessage.info(`应用中心地址：${finalUrl}`)
+            ElNotification({
+              title: '提示',
+              message: '浏览器拦截了新窗口，请允许弹窗后重试',
+              type: 'warning',
+            })
+            ElNotification({
+              title: '提示',
+              message: `应用中心地址：${finalUrl}`,
+              type: 'info',
+            })
           }
         }
       } catch (err) {
-        ElMessage.error(`跳转失败：${err.message}`)
-        console.error('跳转异常详情：', err)
+        ElNotification({
+          title: '提示',
+          message: `跳转失败：${err.message}`,
+          type: 'error',
+        })
       }
     },
-    openVehicleStatistics() {
-      this.vehicleStatisticsVisible = true
+    workTypeStatistics() {
+      this.workTypeDialogVisible = true
     },
-    offlineStatistics() {
-      this.offlineStatisticsVisible = true
-    }
+    taskOrderStatistics() {
+      this.taskOrderDialogVisible = true
+    },
   },
 }
 </script>

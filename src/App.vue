@@ -82,6 +82,10 @@ export default {
 
 .aside {
   height: 100%;
+  background-color: #0d1421;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  padding-bottom: 30px !important;
   overflow: hidden;
 }
 

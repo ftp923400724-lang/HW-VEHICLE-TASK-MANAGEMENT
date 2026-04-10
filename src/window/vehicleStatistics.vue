@@ -58,6 +58,7 @@
           <el-button :disabled="loading.vehicles" @click="resetVehicleQuery">重置</el-button>
           <div class="spacer" />
           <el-button type="primary" @click="openVehicleDialog()">新增车辆</el-button>
+          <el-button type="success" plain @click="openTaskOrderDrawer()">车辆任务单</el-button>
           <el-button :loading="loading.vehicles" @click="loadVehicles">刷新</el-button>
         </div>
 
@@ -345,12 +346,15 @@
         <el-button type="primary" :loading="unitSubmitting" @click="submitUnit">保存</el-button>
       </template>
     </el-dialog>
+
+    <VehicleTaskOrderDrawer v-model:visible="taskOrderDrawerVisible" />
   </el-drawer>
 </template>
 
 <script>
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { normalizeListResult } from '@/api/http'
+import VehicleTaskOrderDrawer from '@/window/vehicleTaskOrderDrawer.vue'
 import {
   fetchVehicleList,
   createVehicle,
@@ -370,6 +374,9 @@ import {
 
 export default {
   name: 'VehicleStatisticsWindow',
+  components: {
+    VehicleTaskOrderDrawer
+  },
   props: {
     visible: {
       type: Boolean,
@@ -426,6 +433,7 @@ export default {
       permissionGroupId: null,
       deviceOptions: [],
       deviceLoading: false,
+      taskOrderDrawerVisible: false,
 
       vehicleDialogVisible: false,
       vehicleSubmitting: false,
@@ -487,6 +495,7 @@ export default {
   methods: {
     handleDrawerClosed() {
       this.activeTab = 'vehicle'
+      this.taskOrderDrawerVisible = false
       this.vehicleDialogVisible = false
       this.typeDialogVisible = false
       this.unitDialogVisible = false
@@ -1013,6 +1022,9 @@ export default {
       } finally {
         this.deviceLoading = false
       }
+    },
+    openTaskOrderDrawer() {
+      this.taskOrderDrawerVisible = true
     }
   }
 }

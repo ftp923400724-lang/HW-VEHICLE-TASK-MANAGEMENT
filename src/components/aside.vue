@@ -1,27 +1,38 @@
 <template>
   <div class="panel">
     <div class="panel__header">
-      <el-select v-model="selectedStatus" size="large" class="status-select" :options="statusOptions"
-        @change="handleStatusChange" />
-      <el-input v-model="filterText" class="custom-input" size="large" clearable placeholder="搜索车牌/设备号" />
+      <div class="toolbar-row toolbar-row--primary">
+        <el-select v-model="selectedStatus" size="large" class="status-select" @change="handleStatusChange">
+          <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
+        </el-select>
+        <el-date-picker
+          v-model="selectedDay"
+          class="day-picker"
+          size="large"
+          type="date"
+          value-format="YYYY-MM-DD"
+          placeholder="按日期搜索"
+          clearable
+          @change="handleDayChange"
+        />
+      </div>
+      <div class="toolbar-row toolbar-row--secondary">
+        <el-input v-model="filterText" class="custom-input" size="large" clearable placeholder="搜索任务单号/车辆/围栏/作业类型" />
+      </div>
     </div>
-    <el-divider content-position="center">信息查询</el-divider>
-    <el-tree ref="treeRef" class="custom-tree" node-key="key" :data="treeData" :props="defaultProps" default-expand-all
-      highlight-current :filter-node-method="filterNode" :render-content="renderTreeNode"
-      @node-click="handleNodeClick" />
+    <el-divider content-position="center" class="tree-divider">信息查询</el-divider>
+    <div class="tree-shell">
+      <el-tree ref="treeRef" class="custom-tree" node-key="key" :data="treeData" :props="defaultProps" default-expand-all
+        highlight-current :filter-node-method="filterNode" :render-content="renderTreeNode"
+        @node-click="handleNodeClick" />
+    </div>
     <div v-if="loading" class="loading-mask">加载中…</div>
   </div>
 </template>
 
 <script>
-import { ElTag } from 'element-plus'
-import { normalizeListResult } from '@/api/http'
-import { fetchRealtimeVehicles, fetchVehicleList, fetchVehicleUnits, fetchVehicleTypes } from '@/api/vehicle'
-import { extractDeviceKey, hasValidCoordinates } from '@/utils/vehicle'
-
-const ONLINE_THRESHOLD_MINUTES = 5
-const OFFLINE_ABNORMAL_THRESHOLD_MINUTES = 30 * 24 * 60
-const POLL_INTERVAL = 60000
+import eventBus, { EventTypes } from '@/utils/eventBus'
+import { fetchRealtimeVehicles, fetchTaskOrders } from '@/api/vehicle'
 
 export default {
   name: 'VehicleTree',
@@ -29,28 +40,24 @@ export default {
     return {
       filterText: '',
       selectedStatus: 'all',
+      selectedDay: '',
       statusOptions: [
         { label: '全部', value: 'all' },
-        { label: '在线', value: 'online' },
-        { label: '离线', value: 'offline' },
-        { label: '异常', value: 'abnormal' }
+        { label: '草稿', value: 'draft' },
+        { label: '已发布', value: 'published' },
+        { label: '执行中', value: 'executing' },
+        { label: '已完成', value: 'finished' },
+        { label: '已验收', value: 'checked' },
+        { label: '已取消', value: 'cancelled' }
       ],
       defaultProps: { children: 'children', label: 'label' },
       treeData: [],
       fullTreeData: [],
-      unitSortMap: new Map(),
-      typeSortMap: new Map(),
-      sortMetadataLoaded: false,
-      loading: false,
-      refreshTimer: null
+      loading: false
     }
   },
   mounted() {
     this.loadVehicleTree()
-    this.startPolling()
-  },
-  beforeUnmount() {
-    this.stopPolling()
   },
   watch: {
     filterText(val) {
@@ -62,57 +69,40 @@ export default {
     async loadVehicleTree() {
       this.loading = true
       try {
-        await this.ensureSortMetadata()
-        const [vehiclePayload, realtimePayload] = await Promise.all([
-          fetchVehicleList({ page: 1, page_size: 9999, pageSize: 9999 }),
-          fetchRealtimeVehicles()
+        const [taskOrders, realtimeRes] = await Promise.all([
+          this.fetchAllTaskOrders(),
+          fetchRealtimeVehicles(),
         ])
-        const vehicles = normalizeListResult(vehiclePayload).list
-        const realtimeRecords = normalizeListResult(realtimePayload).list
-        const realtimeMap = new Map()
-        realtimeRecords.forEach((record) => {
-          const deviceNo = extractDeviceKey(record)
-          if (!deviceNo) return
-          realtimeMap.set(deviceNo, record)
-        })
-        const mergedVehicles = vehicles.map((vehicle) => {
-          const deviceNo = extractDeviceKey(vehicle)
-          const realtimeRecord = deviceNo ? realtimeMap.get(deviceNo) : null
-          return realtimeRecord
-            ? { ...vehicle, ...realtimeRecord, device_no: deviceNo }
-            : { ...vehicle, device_no: deviceNo }
-        })
-        this.fullTreeData = this.buildTreeData(mergedVehicles)
-        this.treeData = this.filterTreeByStatus(this.selectedStatus)
+        const realtimeVehicles = Array.isArray(realtimeRes?.data?.list) ? realtimeRes.data.list : []
+
+        this.fullTreeData = this.buildTaskTree(taskOrders, realtimeVehicles)
+        this.treeData = this.filterTreeByConditions(this.selectedStatus, this.selectedDay)
       } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('加载车辆树失败', error)
         this.fullTreeData = []
         this.treeData = []
+        const message = error?.message || '加载任务单树失败'
+        import('element-plus').then(({ ElNotification }) => {
+          ElNotification({
+            title: '错误',
+            message,
+            type: 'error',
+          })
+        })
       } finally {
         this.loading = false
       }
     },
-    startPolling() {
-      this.stopPolling()
-      this.refreshTimer = window.setInterval(() => {
-        this.loadVehicleTree()
-      }, POLL_INTERVAL)
-    },
-    stopPolling() {
-      if (this.refreshTimer) {
-        window.clearInterval(this.refreshTimer)
-        this.refreshTimer = null
-      }
-    },
     handleStatusChange() {
-      this.treeData = this.filterTreeByStatus(this.selectedStatus)
+      this.treeData = this.filterTreeByConditions(this.selectedStatus, this.selectedDay)
+    },
+    handleDayChange() {
+      this.treeData = this.filterTreeByConditions(this.selectedStatus, this.selectedDay)
     },
     filterNode(value, data) {
       if (!value) return true
       const keyword = String(value).trim()
       if (!keyword) return true
-      return [data.label, data.licensePlate, data.deviceNo, data.code]
+      return [data.searchText, data.label, data.taskOrderNo, data.vehicleName, data.licensePlate, data.deviceNo, data.fenceName, data.workModeText]
         .map((v) => (v ? String(v) : ''))
         .some((text) => text.includes(keyword))
     },
@@ -122,301 +112,263 @@ export default {
         return hRender('span', { class: 'tree-label' }, data.label)
       }
 
-      const STATUS_CONFIG = {
-        online: { type: 'success', text: '在线' },
-        offline: { type: 'warning', text: '离线' },
-        abnormal: { type: 'danger', text: '异常' }
-      }
-      const status = STATUS_CONFIG[data.statusKey] || { type: 'danger', text: '状态' }
-
-      const statusEl = hRender('span', { class: 'tree-node-status' }, [
-        hRender(ElTag, { size: 'small', type: status.type, effect: 'plain' }, () => status.text)
-      ])
-
-      const labelEl = hRender('span', { class: 'tree-label tree-node-label' }, data.label)
-
-      const timeEl = data.suffixText
-        ? hRender('span', { class: 'tree-node-right time-text' }, data.suffixText)
-        : hRender('span', { class: 'tree-node-right tree-node-right--placeholder' }, '')
-
       return hRender('div', { class: 'tree-node-container vehicle-node' }, [
-        statusEl,
-        labelEl,
-        timeEl
+        hRender('span', { class: 'tree-label tree-node-label tree-node-label--vehicle' }, data.label)
       ])
     },
     handleNodeClick(node) {
       if (node.type !== 'vehicle') return
-      const detail = node.option || {}
+      const detail = { ...node.option, licensePlate: node.option?.licensePlate || node.label }
       try {
-        window.dispatchEvent(new CustomEvent('vehicle-selected', { detail }))
+        eventBus.emit(EventTypes.VehicleSelected, detail)
       } catch (_) {
         // ignore
       }
     },
-    buildHierarchicalTree(vehicles) {
-      const unitMap = new Map()
-      vehicles.forEach((vehicle) => {
-        const unitLabel = vehicle.unit_name || vehicle.unit?.name || '未分配单位'
-        const unitIdentifier = vehicle.unit_id ?? vehicle.unit?.id ?? vehicle.unit?.value
-        const unitSort = this.getSortValue(this.unitSortMap, unitIdentifier, unitLabel)
-        const unitKey = vehicle.unit_id ? `unit_${vehicle.unit_id}` : `unit_${unitLabel}`
+    buildTaskTree(tasks = [], realtimeVehicles = []) {
+      const workTypeMap = new Map()
+      const realtimeMap = this.buildRealtimeVehicleMap(realtimeVehicles)
 
-        if (!unitMap.has(unitKey)) {
-          unitMap.set(unitKey, {
-            key: unitKey,
-            label: unitLabel,
-            type: 'unit',
-            children: [],
-            sortValue: unitSort,
-            _typeMap: new Map()
-          })
-        } else {
-          const existing = unitMap.get(unitKey)
-          existing.sortValue = Math.min(existing.sortValue ?? unitSort, unitSort)
+      const compareTaskPriority = (left, right) => {
+        const leftTime = this.resolveTaskTime(left)
+        const rightTime = this.resolveTaskTime(right)
+        if (leftTime && rightTime) {
+          return rightTime.getTime() - leftTime.getTime()
         }
-        const unitNode = unitMap.get(unitKey)
-        const typeLabel = vehicle.vehicle_type_name || vehicle.vehicle_type?.name || '未分类'
-        const typeIdentifier = vehicle.vehicle_type_id ?? vehicle.vehicle_type?.id ?? vehicle.vehicle_type?.value
-        const typeSort = this.getSortValue(this.typeSortMap, typeIdentifier, typeLabel)
-        const typeKeyComponent = typeIdentifier ?? typeLabel ?? 'n'
-        const typeKey = `${unitKey}_type_${typeKeyComponent}`
-
-        if (!unitNode._typeMap.has(typeKey)) {
-          unitNode._typeMap.set(typeKey, {
-            key: typeKey,
-            label: typeLabel,
-            type: 'type',
-            children: [],
-            sortValue: typeSort
-          })
-          unitNode.children.push(unitNode._typeMap.get(typeKey))
-        } else {
-          const existing = unitNode._typeMap.get(typeKey)
-          existing.sortValue = Math.min(existing.sortValue ?? typeSort, typeSort)
-        }
-        const typeNode = unitNode._typeMap.get(typeKey)
-        const statusInfo = this.deriveStatusInfo(vehicle)
-        const vehicleSort = this.normalizeSortField(vehicle.sort ?? vehicle.sort_order ?? 0)
-
-        typeNode.children.push({
-          key: `vehicle_${vehicle.id || statusInfo.option.deviceNo || Math.random()}`,
-          label: statusInfo.label,
-          type: 'vehicle',
-          statusKey: statusInfo.statusKey,
-          suffixText: statusInfo.suffixText,
-          option: statusInfo.option,
-          licensePlate: vehicle.license_plate,
-          deviceNo: statusInfo.option.deviceNo,
-          isLeaf: true,
-          sortValue: vehicleSort
-        })
-      })
-
-      unitMap.forEach((unitNode) => {
-        unitNode.children.forEach((typeNode) => {
-          typeNode.children.sort(this.compareNodesBySortThenLabel)
-        })
-      })
-      return Array.from(unitMap.values())
-        .map((unitNode) => {
-          const children = unitNode.children
-            .map((typeNode) => ({
-              ...typeNode,
-              children: [...typeNode.children]
-            }))
-            .filter((typeNode) => typeNode.children.length)
-            .sort(this.compareNodesBySortThenLabel)
-          const label = `${unitNode.label} (${children.reduce((sum, n) => sum + n.children.length, 0)})`
-          return {
-            key: unitNode.key,
-            label,
-            type: unitNode.type,
-            children,
-            sortValue: unitNode.sortValue
-          }
-        })
-        .filter((unitNode) => unitNode.children.length)
-        .sort(this.compareNodesBySortThenLabel)
-    },
-    buildTreeData(vehicles) {
-      return this.buildHierarchicalTree(vehicles)
-    },
-    async ensureSortMetadata() {
-      if (this.sortMetadataLoaded) return
-      await Promise.allSettled([this.loadUnitSorts(), this.loadTypeSorts()])
-      this.sortMetadataLoaded = true
-    },
-    async loadUnitSorts() {
-      if (this.unitSortMap.size) return
-      try {
-        const payload = await fetchVehicleUnits({ page: 1, page_size: 9999, pageSize: 9999 })
-        const { list } = normalizeListResult(payload)
-        const map = new Map()
-        ;(list || []).forEach((item) => {
-          const identifier = item.id ?? item.unit_id ?? item.value ?? item.unitId
-          const sortValue = this.normalizeSortField(item.sort ?? item.sort_order ?? item.order ?? 0)
-          if (identifier !== undefined && identifier !== null) {
-            map.set(String(identifier), sortValue)
-          }
-          const labelKey = this.normalizeLabelKey(item.name ?? item.unit_name ?? item.label ?? item.unit_code)
-          if (labelKey) {
-            map.set(`label:${labelKey}`, sortValue)
-          }
-        })
-        this.unitSortMap = map
-      } catch (error) {
-        console.error('加载车辆单位排序数据失败', error)
-      }
-    },
-    async loadTypeSorts() {
-      if (this.typeSortMap.size) return
-      try {
-        const payload = await fetchVehicleTypes({ page: 1, page_size: 9999, pageSize: 9999 })
-        const { list } = normalizeListResult(payload)
-        const map = new Map()
-        ;(list || []).forEach((item) => {
-          const identifier =
-            item.id ?? item.type_id ?? item.value ?? item.vehicle_type_id ?? item.vehicleTypeId
-          const sortValue = this.normalizeSortField(item.sort ?? item.sort_order ?? item.order ?? 0)
-          if (identifier !== undefined && identifier !== null) {
-            map.set(String(identifier), sortValue)
-          }
-          const labelKey = this.normalizeLabelKey(item.name ?? item.type_name ?? item.label ?? item.code)
-          if (labelKey) {
-            map.set(`label:${labelKey}`, sortValue)
-          }
-        })
-        this.typeSortMap = map
-      } catch (error) {
-        console.error('加载车辆类型排序数据失败', error)
-      }
-    },
-    normalizeSortField(value) {
-      if (value === undefined || value === null) {
+        if (leftTime) return -1
+        if (rightTime) return 1
         return 0
       }
-      if (typeof value === 'number') {
-        return Number.isFinite(value) ? value : 0
-      }
-      const trimmed = String(value).trim()
-      if (!trimmed) return 0
-      const parsed = Number(trimmed)
-      return Number.isNaN(parsed) ? 0 : parsed
+
+      tasks.forEach((task, index) => {
+        const normalized = this.normalizeTaskRecord(task, index)
+        if (!normalized.vehicleKey) return
+
+        const workTypeKey = normalized.workModeText || '未分类作业'
+        const fenceKey = normalized.fenceName || '未分配围栏'
+        if (!workTypeMap.has(workTypeKey)) {
+          workTypeMap.set(workTypeKey, {
+            key: `workType_${workTypeKey}`,
+            label: workTypeKey,
+            type: 'workType',
+            children: [],
+            _fenceMap: new Map(),
+            searchText: workTypeKey,
+          })
+        }
+
+        const workTypeNode = workTypeMap.get(workTypeKey)
+        if (!workTypeNode._fenceMap.has(fenceKey)) {
+          workTypeNode._fenceMap.set(fenceKey, {
+            key: `fence_${workTypeKey}_${fenceKey}`,
+            label: fenceKey,
+            type: 'fence',
+            children: [],
+            _vehicleMap: new Map(),
+            searchText: `${workTypeKey} ${fenceKey}`,
+          })
+          workTypeNode.children.push(workTypeNode._fenceMap.get(fenceKey))
+        }
+
+        const fenceNode = workTypeNode._fenceMap.get(fenceKey)
+        const existing = fenceNode._vehicleMap.get(normalized.vehicleKey)
+        if (!existing || compareTaskPriority(normalized, existing.rawTask) > 0) {
+          fenceNode._vehicleMap.set(normalized.vehicleKey, this.buildTaskVehicleNode(normalized, realtimeMap))
+        }
+      })
+
+      const sortByLabel = (a, b) => String(a.label || '').localeCompare(String(b.label || ''), 'zh-Hans-CN')
+
+      return Array.from(workTypeMap.values())
+        .sort(sortByLabel)
+        .map((workTypeNode) => {
+          const fences = workTypeNode.children
+            .map((fenceNode) => {
+              const children = Array.from(fenceNode._vehicleMap.values()).sort(sortByLabel)
+              const label = `${fenceNode.label} (${children.length})`
+              return {
+                key: fenceNode.key,
+                label,
+                type: fenceNode.type,
+                children,
+                searchText: fenceNode.searchText,
+              }
+            })
+            .filter((fenceNode) => fenceNode.children.length)
+            .sort(sortByLabel)
+          const label = `${workTypeNode.label} (${fences.reduce((sum, node) => sum + node.children.length, 0)})`
+          return {
+            key: workTypeNode.key,
+            label,
+            type: workTypeNode.type,
+            children: fences,
+            searchText: workTypeNode.searchText,
+          }
+        })
+        .filter((workTypeNode) => workTypeNode.children.length)
     },
-    normalizeLabelKey(value) {
-      if (typeof value !== 'string') return ''
-      return value.trim()
+    buildRealtimeVehicleMap(vehicles = []) {
+      const map = new Map()
+      ;(Array.isArray(vehicles) ? vehicles : []).forEach((vehicle) => {
+        const option = this.normalizeRealtimeVehicle(vehicle)
+        if (!option) return
+        const keys = [option.vehicleId, option.licensePlate, option.deviceNo].filter(Boolean)
+        keys.forEach((key) => {
+          if (!map.has(key)) {
+            map.set(key, option)
+          }
+        })
+      })
+      return map
     },
-    getSortValue(map, identifier, label) {
-      if (identifier !== undefined && identifier !== null) {
-        const value = map.get(String(identifier))
-        if (value !== undefined) return value
-      }
-      const labelKey = this.normalizeLabelKey(label)
-      if (labelKey) {
-        const value = map.get(`label:${labelKey}`)
-        if (value !== undefined) return value
-      }
-      return 0
-    },
-    compareNodesBySortThenLabel(a, b) {
-      const sortA = Number.isFinite(a?.sortValue) ? a.sortValue : 0
-      const sortB = Number.isFinite(b?.sortValue) ? b.sortValue : 0
-      if (sortA !== sortB) return sortA - sortB
-      const labelA = String(a?.label ?? '')
-      const labelB = String(b?.label ?? '')
-      return labelA.localeCompare(labelB)
-    },
-    deriveStatusInfo(vehicle) {
-      const deviceKey = extractDeviceKey(vehicle)
-      const plate = vehicle.license_plate || vehicle.vehicle_name || deviceKey || '未知车辆'
-      const option = {
-        level: 'vehicle',
-        vehicleId: vehicle.id,
-        vehicleName: vehicle.vehicle_name,
-        licensePlate: vehicle.license_plate,
-        deviceNo: deviceKey,
+    normalizeRealtimeVehicle(vehicle = {}) {
+      const deviceNo = String(vehicle?.device_no ?? vehicle?.deviceNo ?? vehicle?.hardware_id ?? vehicle?.hardwareId ?? vehicle?.uuid ?? '').trim()
+      const licensePlate = String(vehicle?.license_plate ?? vehicle?.licensePlate ?? vehicle?.plate_no ?? vehicle?.plate ?? vehicle?.vehicle_name ?? vehicle?.vehicleName ?? '').trim()
+      const vehicleName = String(vehicle?.vehicle_name ?? vehicle?.vehicleName ?? '').trim()
+      const vehicleId = String(vehicle?.id ?? vehicle?.vehicle_id ?? vehicle?.vehicleId ?? '').trim()
+      if (!deviceNo && !licensePlate && !vehicleId) return null
+      return {
+        vehicleId,
+        vehicleName,
+        licensePlate,
+        deviceNo,
+        unitName: vehicle?.unit_name || vehicle?.unitName || vehicle?.unit?.name || '',
+        vehicleTypeName: vehicle?.vehicle_type_name || vehicle?.vehicleTypeName || vehicle?.vehicle_type?.name || '',
         rawVehicle: vehicle,
       }
-
-      if (!deviceKey) {
-        return { statusKey: 'abnormal', label: plate, suffixText: '未绑定设备', option }
-      }
-
-      if (!hasValidCoordinates(vehicle)) {
-        return { statusKey: 'abnormal', label: plate, suffixText: '暂无实时数据', option }
-      }
-
-      const timestamp = this.extractTimestamp(vehicle)
-      if (timestamp) {
-        const diffMinutes = (Date.now() - timestamp.getTime()) / 60000
-        option.rawRealtime = vehicle
-        const daysOffline = diffMinutes / (24 * 60)
-        if (diffMinutes >= OFFLINE_ABNORMAL_THRESHOLD_MINUTES) {
-          const daysText = Math.max(30, Math.round(daysOffline))
-          return {
-            statusKey: 'abnormal',
-            label: plate,
-            suffixText: `${daysText} 天未上线`,
-            option,
-          }
-        }
-        const statusKey = diffMinutes <= ONLINE_THRESHOLD_MINUTES ? 'online' : 'offline'
-        return {
-          statusKey,
-          label: plate,
-          suffixText: `${this.describeElapsed(diffMinutes)}前在线`,
-          option,
-        }
-      }
-
-      return { statusKey: 'offline', label: plate, suffixText: '无时间戳', option }
     },
-    extractTimestamp(record) {
-      const candidates = [record?.timer, record?.received_at, record?.updated_at, record?.created_at, record?.ts]
-      for (const value of candidates) {
-        const date = this.normalizeTimestamp(value)
+    normalizeTaskRecord(task = {}, index = 0) {
+      const taskStatus = String(task?.status || 'draft').trim().toLowerCase() || 'draft'
+      const vehicleId = String(task?.vehicle_id ?? task?.vehicleId ?? '').trim()
+      const licensePlate = String(task?.license_plate ?? task?.licensePlate ?? '').trim()
+      const vehicleName = String(task?.vehicle_name ?? task?.vehicleName ?? '').trim()
+      const fenceId = String(task?.fence_id ?? task?.fenceId ?? '').trim()
+      const fenceName = String(task?.fence_name ?? task?.fenceName ?? task?.work_fence_name ?? task?.workFenceName ?? '').trim() || '未分配围栏'
+      const workModeText = String(task?.work_mode_text ?? task?.workModeText ?? '').trim() || '未分类作业'
+      const taskOrderNo = String(task?.order_no ?? task?.orderNo ?? '').trim()
+      const taskDateKey = this.formatTaskDayKey(task?.task_start_time ?? task?.taskStartTime ?? task?.start_time ?? task?.startTime ?? task?.created_at ?? task?.createdAt ?? '')
+      const vehicleKey = vehicleId || licensePlate || vehicleName || `task_${index}`
+      return {
+        ...task,
+        taskStatus,
+        taskOrderNo,
+        vehicleId,
+        vehicleName,
+        licensePlate,
+        fenceId,
+        fenceName,
+        workModeText,
+        taskDateKey,
+        isAutoGenerateDaily: Number(task?.is_auto_generate_daily ?? task?.isAutoGenerateDaily ?? 0) === 1,
+        vehicleKey,
+        searchText: [taskOrderNo, vehicleName, licensePlate, fenceName, workModeText, taskDateKey].filter(Boolean).join(' '),
+      }
+    },
+    buildTaskVehicleNode(task = {}, realtimeMap) {
+      const realtime = this.findRealtimeVehicle(task, realtimeMap)
+      const vehicleLabel = task.vehicleName || realtime?.vehicleName || task.licensePlate || '未知车辆'
+      const suffixText = task.isAutoGenerateDaily
+        ? '每日自动'
+        : this.formatTaskShortTime(task.task_start_time || task.taskStartTime || task.start_time || task.startTime)
+      return {
+        key: `vehicle_${task.vehicleKey}_${task.taskOrderNo || Math.random().toString(36).slice(2, 8)}`,
+        label: vehicleLabel,
+        type: 'vehicle',
+        statusKey: task.taskStatus,
+        suffixText,
+        option: {
+          level: 'vehicle',
+          vehicleId: realtime?.vehicleId || task.vehicleId || '',
+          vehicleName: vehicleLabel,
+          licensePlate: task.licensePlate || realtime?.licensePlate || vehicleLabel,
+          deviceNo: realtime?.deviceNo || '',
+          unitName: realtime?.unitName || '',
+          vehicleTypeName: realtime?.vehicleTypeName || '',
+          fenceId: task.fenceId || '',
+          taskOrderNo: task.taskOrderNo,
+          taskStatus: task.taskStatus,
+          workModeText: task.workModeText,
+          fenceName: task.fenceName,
+          isAutoGenerateDaily: task.isAutoGenerateDaily ? 1 : 0,
+          taskStartTime: task.task_start_time || task.taskStartTime || task.start_time || task.startTime || '',
+          rawTask: task,
+          rawVehicle: realtime?.rawVehicle || null,
+        },
+        licensePlate: task.licensePlate || realtime?.licensePlate || vehicleLabel,
+        deviceNo: realtime?.deviceNo || '',
+        fenceId: task.fenceId || '',
+        taskOrderNo: task.taskOrderNo,
+        workModeText: task.workModeText,
+        fenceName: task.fenceName,
+        taskDateKey: task.taskDateKey || '',
+        searchText: [vehicleLabel, task.licensePlate, task.taskOrderNo, task.workModeText, task.fenceName, suffixText].filter(Boolean).join(' '),
+        isLeaf: true,
+      }
+    },
+    findRealtimeVehicle(task, realtimeMap) {
+      if (!(realtimeMap instanceof Map)) return null
+      const keys = [task.vehicleId, task.licensePlate, task.vehicleName].map((value) => String(value || '').trim()).filter(Boolean)
+      for (const key of keys) {
+        if (realtimeMap.has(key)) {
+          return realtimeMap.get(key)
+        }
+      }
+      return null
+    },
+    formatTaskShortTime(value) {
+      const date = this.parseTaskTime(value)
+      if (!date) return ''
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      return `${month}-${day} ${hours}:${minutes}`
+    },
+    parseTaskTime(value) {
+      if (!value) return null
+      if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+      const parsed = new Date(String(value).replace(' ', 'T'))
+      return Number.isNaN(parsed.getTime()) ? null : parsed
+    },
+    formatTaskDayKey(value) {
+      const date = this.parseTaskTime(value)
+      if (!date) return ''
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    },
+    resolveTaskTime(task) {
+      const candidates = [
+        task?.task_start_time,
+        task?.taskStartTime,
+        task?.start_time,
+        task?.startTime,
+        task?.updated_at,
+        task?.updatedAt,
+        task?.created_at,
+        task?.createdAt,
+      ]
+      for (const candidate of candidates) {
+        const date = this.parseTaskTime(candidate)
         if (date) return date
       }
       return null
     },
-    normalizeTimestamp(value) {
-      if (value === null || value === undefined || value === '') {
-        return null
+    filterTreeByConditions(targetStatus, targetDay) {
+      if (!this.fullTreeData.length) {
+        return []
       }
-      if (typeof value === 'number') {
-        const seconds = value > 1e12 ? Math.floor(value / 1000) : value
-        return new Date(seconds * 1000)
-      }
-      const str = String(value).trim()
-      if (!str) return null
-      if (/^\d{4}\d{2}\d{2}-\d{2}:\d{2}:\d{2}$/.test(str)) {
-        const normalized = str.replace(
-          /(\d{4})(\d{2})(\d{2})-(\d{2}):(\d{2}):(\d{2})/,
-          '$1-$2-$3T$4:$5:$6'
-        )
-        const date = new Date(normalized)
-        return Number.isNaN(date.getTime()) ? null : date
-      }
-      const parsed = new Date(str)
-      return Number.isNaN(parsed.getTime()) ? null : parsed
-    },
-    describeElapsed(minutes) {
-      if (minutes < 1) return '刚刚'
-      if (minutes < 60) return `${Math.round(minutes)} 分钟`
-      const hours = minutes / 60
-      if (hours < 24) return `${Math.round(hours)} 小时`
-      const days = hours / 24
-      return `${Math.round(days)} 天`
-    },
-    filterTreeByStatus(targetStatus) {
-      if (!this.fullTreeData.length || targetStatus === 'all') {
+      const activeStatus = String(targetStatus || 'all')
+      const activeDay = String(targetDay || '').trim()
+      if (activeStatus === 'all' && !activeDay) {
         return this.fullTreeData
       }
       const cloneNode = (node) => {
         if (node.type === 'vehicle') {
-          return node.statusKey === targetStatus ? { ...node } : null
+          const statusMatched = activeStatus === 'all' || node.statusKey === activeStatus
+          const dayMatched = !activeDay || String(node.taskDateKey || '').trim() === activeDay
+          return statusMatched && dayMatched ? { ...node } : null
         }
         const children = (node.children || []).map(cloneNode).filter(Boolean)
         if (children.length) {
@@ -425,6 +377,24 @@ export default {
         return null
       }
       return this.fullTreeData.map(cloneNode).filter(Boolean)
+    },
+    async fetchAllTaskOrders() {
+      const collected = []
+      let page = 1
+      const pageSize = 200
+
+      while (true) {
+        const result = await fetchTaskOrders({ page, pageSize })
+        const list = Array.isArray(result?.list) ? result.list : []
+        const total = Number(result?.total || 0)
+        collected.push(...list)
+        if (collected.length >= total || list.length < pageSize || page > 20) {
+          break
+        }
+        page += 1
+      }
+
+      return collected
     }
   }
 }
@@ -434,21 +404,49 @@ export default {
 .panel {
   width: 100%;
   height: 100%;
-  background-color: #0d1421;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
   position: relative;
 }
 
 .panel__header {
   display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 10px;
+  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px 12px 10px;
 }
 
 .status-select {
-  width: 110px;
+  width: 118px;
+}
+
+.day-picker {
+  width: 100%;
+}
+
+.custom-input {
+  width: 100%;
+}
+
+.tree-shell {
+  padding: 0 10px 12px;
+}
+
+.tree-divider {
+  margin: 4px 0 8px;
+}
+
+.toolbar-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.toolbar-row--primary {
+  align-items: center;
+}
+
+.toolbar-row--secondary {
+  align-items: stretch;
 }
 
 .loading-mask {
@@ -466,18 +464,28 @@ export default {
 /* 节点布局样式 */
 :deep(.custom-tree .tree-node-container) {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   width: 100%;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   box-sizing: border-box;
-  padding: 0 4px;
+  padding: 0 8px;
 }
 
 :deep(.vehicle-node) {
   width: 100%;
-  padding: 2px 0;
+  padding: 4px 0;
+}
+
+:deep(.tree-node-center) {
+  min-width: 0;
+  overflow: hidden;
+}
+
+:deep(.tree-node-center .tree-node-label) {
+  text-align: left;
+  justify-self: stretch;
 }
 
 :deep(.tree-node-status) {
@@ -488,12 +496,12 @@ export default {
 }
 
 :deep(.tree-node-label) {
-  text-align: center;
-  justify-self: center;
+  text-align: left;
+  justify-self: stretch;
 }
 
 :deep(.tree-node-right) {
-  font-size: 10px;
+  font-size: 12px;
   color: #9aa1b5;
   white-space: nowrap;
   text-align: right;
@@ -511,14 +519,28 @@ export default {
   text-overflow: ellipsis;
 }
 
-:deep(.tree-group-label) {
-  color: #ffd166;
-  font-weight: 600;
+.tree-status-tag {
+  line-height: 1;
+}
+
+.plate-number {
+  font-size: 14px;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.time-text {
+  font-size: 8px !important;
+  color: #909399;
+  line-height: 1;
+  margin-left: 8px;
+  white-space: nowrap;
 }
 
 :deep(.status-select .el-select__wrapper),
-:deep(.custom-input .el-input__wrapper) {
-  background-color: rgba(30, 41, 59, 0.5);
+:deep(.custom-input .el-input__wrapper),
+:deep(.day-picker .el-input__wrapper) {
+  background-color: #1b2b49;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   padding: 0 12px;
@@ -526,23 +548,26 @@ export default {
 }
 
 :deep(.status-select .el-select__input),
-:deep(.custom-input .el-input__inner) {
+:deep(.custom-input .el-input__inner),
+:deep(.day-picker .el-input__inner) {
   color: #ffffff;
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
   background: transparent;
   border: none;
   box-shadow: none;
 }
 
 :deep(.status-select .el-select__placeholder),
-:deep(.custom-input .el-input__inner::placeholder) {
+:deep(.custom-input .el-input__inner::placeholder),
+:deep(.day-picker .el-input__inner::placeholder) {
   color: #99a3b8;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 :deep(.status-select .el-select__icon),
-:deep(.custom-input .el-input__suffix) {
+:deep(.custom-input .el-input__suffix),
+:deep(.day-picker .el-input__suffix) {
   color: #94a3b8;
   display: flex;
   align-items: center;
@@ -550,22 +575,34 @@ export default {
 }
 
 :deep(.status-select .el-select__icon),
-:deep(.custom-input .el-input__suffix-inner .el-icon) {
+:deep(.custom-input .el-input__suffix-inner .el-icon),
+:deep(.day-picker .el-input__suffix-inner .el-icon) {
   width: 16px;
   height: 16px;
   transition: color 0.2s;
 }
 
 :deep(.status-select .el-select__icon:hover),
-:deep(.custom-input .el-input__suffix-inner .el-icon:hover) {
+:deep(.custom-input .el-input__suffix-inner .el-icon:hover),
+:deep(.day-picker .el-input__suffix-inner .el-icon:hover) {
   color: #ffffff;
 }
 
 :deep(.status-select .el-select__wrapper:focus-within),
-:deep(.custom-input .el-input__wrapper:focus-within) {
+:deep(.custom-input .el-input__wrapper:focus-within),
+:deep(.day-picker .el-input__wrapper:focus-within) {
   border-color: #409eff;
   box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
   outline: none;
+}
+
+:deep(.day-picker .el-input__prefix-inner) {
+  color: #94a3b8;
+}
+
+:deep(.day-picker .el-input__prefix-inner .el-icon) {
+  width: 16px;
+  height: 16px;
 }
 
 :deep(.status-select .el-select-dropdown) {
@@ -578,7 +615,7 @@ export default {
 :deep(.status-select .el-select-dropdown__item) {
   color: #ffffff;
   padding: 6px 16px;
-  font-size: 12px;
+  font-size: 13px;
   transition: background-color 0.2s;
 }
 
@@ -590,36 +627,43 @@ export default {
   background-color: #1e40af;
 }
 
+:deep(.status-select .el-select-dropdown__separator) {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
 :deep(.custom-tree) {
   background-color: #0d1421;
   color: #FFF;
-  padding: 8px 0;
+  padding: 10px 0 16px;
   overflow: auto;
-  height: calc(100% - 100px);
-  /* 1. 重置全局缩进变量（核心：清除默认层级缩进增量） */
-  --el-tree-node-indent: 0px;
-  /* 如需保留少量基础缩进，可修改为 8px，示例：--el-tree-node-indent: 8px; */
+  height: calc(100% - 94px);
 }
 
 :deep(.custom-tree .el-tree-node__label) {
   color: #ffffff;
-  font-size: 12px;
+  font-size: 13px;
   transition: color 0.2s;
 }
 
 :deep(.custom-tree .el-tree-node__content) {
-  padding-top: 4px !important;
-  padding-bottom: 4px !important;
-  margin: 0 4px;
-  border-radius: 4px;
+  margin: 4px 4px;
+  border-radius: 6px;
   transition: all 0.2s ease;
   height: auto;
   line-height: 1.5;
 }
 
+:deep(.custom-tree > .el-tree-node:first-child > .el-tree-node__content) {
+  margin-top: 0;
+}
+
+:deep(.custom-tree > .el-tree-node:last-child > .el-tree-node__content) {
+  margin-bottom: 0;
+}
+
 :deep(.custom-tree .el-tree-node__content:hover) {
   background-color: #162033;
-  transform: translateX(2px);
+  transform: translateX(1px);
 }
 
 :deep(.el-tree-node.is-current > .el-tree-node__content) {
@@ -632,19 +676,14 @@ export default {
 }
 
 :deep(.el-tree-node) {
-  /* 同步更新节点缩进变量，确保一致性 */
-  --el-tree-node-indent: 0px;
+  --el-tree-node-indent: 16px;
 }
 
-:deep(.custom-tree .el-tree-node__expand-icon) {
-  /* 3. 重置展开/折叠图标位置，避免错位 */
+:deep(.el-tree-node__expand-icon) {
   color: #94a3b8;
   width: 16px;
   height: 16px;
   margin-right: 6px;
-  margin-left: 0;
-  display: inline-flex;
-  align-items: center;
 }
 
 :deep(.el-tree-node__expand-icon:hover) {
@@ -653,11 +692,6 @@ export default {
 
 :deep(.el-tree-node__expand-icon.is-leaf) {
   visibility: hidden;
-}
-
-/* 4. 清除原有缩进辅助虚线（如需保留，可删除该样式） */
-:deep(.el-tree--indent .el-tree-node__content::before) {
-  display: none;
 }
 
 :deep(.el-divider) {
@@ -672,6 +706,19 @@ export default {
 :deep(.el-tree .el-icon-caret-right),
 :deep(.el-tree .el-icon-caret-bottom) {
   color: #cccccc;
+}
+
+:deep(.el-tree--indent .el-tree-node__content) {
+  position: relative;
+}
+
+:deep(.el-tree--indent .el-tree-node__content::before) {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed #2d3748;
 }
 
 :deep(.custom-tree::-webkit-scrollbar) {
@@ -691,16 +738,5 @@ export default {
 
 :deep(.custom-tree::-webkit-scrollbar-thumb:hover) {
   background: #64748b;
-}
-
-:deep(.el-tree-node[data-type="unit"] .el-tree-node__label),
-:deep(.el-tree-node[data-type="type"] .el-tree-node__label) {
-  color: #93c5fd;
-  font-weight: 500;
-}
-
-:deep(.el-tree-node[data-type="unit"] .el-tree-node__content:hover),
-:deep(.el-tree-node[data-type="type"] .el-tree-node__content:hover) {
-  background-color: #1e293b80;
 }
 </style>

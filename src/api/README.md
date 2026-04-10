@@ -1,4 +1,4 @@
-# API 管理说明（HW-VEHICLE-POSITIONING）
+# API 管理说明（HW-VEHICLE-TASK-MANAGEMENT）
 
 本项目 API 管理遵循仓库统一说明（Axios API 管理标准）。
 
@@ -7,9 +7,9 @@
 - `src/api/http.js`
   - 统一 axios 实例、请求/响应拦截、鉴权头注入、错误处理。
 - `src/api/vehicle/`
-  - `realtime.js`：实时定位与统计接口。
+  - `taskOrder.js`：任务单增删改查。
   - `crud.js`：车辆列表与增删改。
-  - `metadata.js`：单位、类型、权限组、设备绑定。
+  - `metadata.js`：围栏、作业类型、车辆等基础数据。
   - `index.js`：统一导出。
 - 页面层（`src/components`、`src/window`）
   - 只调用 `src/api/vehicle` 导出的业务函数。
@@ -17,7 +17,7 @@
 
 ## 成功码与失败规则
 
-- 业务成功：`code >= 1`（当前后端成功码为 `1`）。
+- 业务成功：`code >= 1`（当前后端成功码通常为 `1`）。
 - 业务失败：`code < 1`，会在 `unwrapResponse` 中抛错。
 - HTTP 失败：
   - `401/403`：非开发模式下清理 token 并跳转登录。
@@ -26,7 +26,7 @@
 ## 鉴权头策略
 
 - 默认自动注入：
-  - `AppSecret`（来自 `VITE_APP_SECRET`，并兼容从 URL 参数 `AppSecret/appSecret/accessToken` 注入后缓存）。
+- `AppSecret`（来自 `VITE_APP_SECRET`，并兼容从 URL 参数 `AppSecret/appSecret/accessToken` 注入后缓存）。
   - `User-Token` / `Authorization` / `Api-Auth`（来自 token 工具）。
 - 开发模式可注入：
   - `X-Dev-Super-Admin: 1`（用于本地联调兜底）。
@@ -41,10 +41,10 @@
 ## 使用示例
 
 ```js
-import { fetchVehicleList } from '@/api/vehicle'
+import { fetchTaskOrders } from '@/api/vehicle'
 import { normalizeListResult } from '@/api/http'
 
-const payload = await fetchVehicleList({ page: 1, pageSize: 10 })
+const payload = await fetchTaskOrders({ page: 1, pageSize: 10 })
 const { list, total } = normalizeListResult(payload)
 ```
 
