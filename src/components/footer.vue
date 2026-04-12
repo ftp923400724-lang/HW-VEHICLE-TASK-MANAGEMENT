@@ -828,7 +828,7 @@ function getDayRange(base: Date) {
   padding: 8px 8px;
   box-sizing: border-box;
   background: rgba(13, 20, 33, 0.98);
-  border-left: 1px solid rgba(96, 165, 250, 0.18);
+  border-left: 1px solid rgba(15, 23, 42, 0.95);
 }
 
 .video-switcher :deep(.el-radio-button) {
@@ -851,7 +851,7 @@ function getDayRange(base: Date) {
   letter-spacing: 0.04em;
   color: #dbe4f0;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(23, 34, 54, 0.96));
-  border: 1px solid rgba(148, 163, 184, 0.34);
+  border: 1px solid rgba(15, 23, 42, 0.96);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   transition:
     background-color 0.2s ease,
@@ -863,22 +863,22 @@ function getDayRange(base: Date) {
 
 .video-switcher :deep(.el-radio-button__inner:hover) {
   color: #ffffff;
-  border-color: rgba(96, 165, 250, 0.55);
+  border-color: rgba(30, 41, 59, 1);
   background: linear-gradient(180deg, rgba(23, 34, 54, 0.98), rgba(30, 41, 59, 0.98));
 }
 
 .video-switcher :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
   color: #ffffff;
   background: linear-gradient(180deg, rgba(37, 99, 235, 0.9), rgba(29, 78, 216, 0.9));
-  border-color: rgba(96, 165, 250, 0.9);
+  border-color: rgba(15, 23, 42, 0.98);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 0 0 1px rgba(96, 165, 250, 0.18);
+    0 0 0 1px rgba(15, 23, 42, 0.45);
 }
 
 .video-switcher :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner:hover) {
   background: linear-gradient(180deg, rgba(37, 99, 235, 0.98), rgba(29, 78, 216, 0.98));
-  border-color: rgba(96, 165, 250, 1);
+  border-color: rgba(15, 23, 42, 1);
 }
 
 .analysis-issues {
