@@ -1,31 +1,12 @@
 <template>
-  <el-drawer
-    v-model="drawerVisible"
-    title="车辆作业类型"
-    class="task-order-drawer"
-    modal-class="task-order-drawer-overlay"
-    size="86%"
-    direction="rtl"
-    :append-to-body="true"
-    :close-on-click-modal="false"
-    @opened="handleDrawerOpened"
-  >
+  <el-drawer v-model="drawerVisible" title="车辆作业类型" class="task-order-drawer" modal-class="task-order-drawer-overlay"
+    size="86%" direction="rtl" :append-to-body="true" :close-on-click-modal="false" @opened="handleDrawerOpened">
     <div class="work-type-panel">
       <div class="work-type-toolbar">
-        <el-input
-          v-model.trim="keyword"
-          clearable
-          placeholder="搜索类型编码/作业类型/描述"
-          class="work-type-search"
-          @keyup.enter="loadWorkTypeReport(1)"
-        />
-        <el-select
-          v-model="statusFilter"
-          clearable
-          placeholder="全部状态"
-          class="work-type-status"
-          popper-class="task-order-popper"
-        >
+        <el-input v-model.trim="keyword" clearable placeholder="搜索类型编码/作业类型/描述" class="work-type-search"
+          @keyup.enter="loadWorkTypeReport(1)" />
+        <el-select v-model="statusFilter" clearable placeholder="全部状态" class="work-type-status"
+          popper-class="task-order-popper">
           <el-option label="启用" :value="1" />
           <el-option label="停用" :value="0" />
         </el-select>
@@ -56,17 +37,8 @@
       <el-alert v-if="errorMessage" type="error" show-icon :title="errorMessage" class="work-type-alert" />
 
       <div class="work-type-table-shell">
-        <el-table
-          ref="workTypeTableRef"
-          v-loading="loading"
-          :data="pagedRows"
-          border
-          stripe
-          class="work-type-table"
-          row-key="id"
-          empty-text="暂无作业类型数据"
-          height="100%"
-        >
+        <el-table ref="workTypeTableRef" v-loading="loading" :data="pagedRows" border stripe class="work-type-table"
+          row-key="id" empty-text="暂无作业类型数据" height="100%">
           <el-table-column type="index" label="#" width="54" align="center" />
           <el-table-column prop="type_code" label="类型编码" min-width="150" show-overflow-tooltip />
           <el-table-column prop="type_name" label="作业类型" min-width="170" show-overflow-tooltip />
@@ -98,27 +70,14 @@
         <div class="work-type-footer__meta">
           当前条件下共 <strong>{{ pagination.total }}</strong> 条作业类型，已展示 <strong>{{ pagedRows.length }}</strong> 条
         </div>
-        <el-pagination
-          background
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="pagination.total"
-          :current-page="pagination.page"
-          :page-size="pagination.pageSize"
-          :page-sizes="[10, 20, 50]"
-          @current-change="handlePageChange"
-          @size-change="handleSizeChange"
-        />
+        <el-pagination background layout="total, sizes, prev, pager, next, jumper" :total="pagination.total"
+          :current-page="pagination.page" :page-size="pagination.pageSize" :page-sizes="[10, 20, 50]"
+          @current-change="handlePageChange" @size-change="handleSizeChange" />
       </div>
 
-      <el-dialog
-        v-model="workTypeDialogVisible"
-        :title="workTypeEditingId ? '编辑作业类型' : '新增作业类型'"
-        width="720px"
-        :append-to-body="true"
-        class="task-order-dialog"
-        modal-class="task-order-dialog-overlay"
-        @closed="resetWorkTypeDialog"
-      >
+      <el-dialog v-model="workTypeDialogVisible" :title="workTypeEditingId ? '编辑作业类型' : '新增作业类型'" width="720px"
+        :append-to-body="true" class="task-order-dialog" modal-class="task-order-dialog-overlay"
+        @closed="resetWorkTypeDialog">
         <el-form ref="workTypeFormRef" :model="workTypeForm" :rules="workTypeRules" label-width="110px">
           <el-form-item label="类型编码" prop="type_code">
             <el-input v-model.trim="workTypeForm.type_code" placeholder="请输入类型编码" />
@@ -133,13 +92,8 @@
             </el-select>
           </el-form-item>
           <el-form-item label="限速规则(km/h)" prop="speed_limit_kmh">
-            <el-input-number
-              v-model.number="workTypeForm.speed_limit_kmh"
-              :min="0"
-              :max="200"
-              :step="1"
-              controls-position="right"
-            />
+            <el-input-number v-model.number="workTypeForm.speed_limit_kmh" :min="0" :max="200" :step="1"
+              controls-position="right" />
           </el-form-item>
           <el-form-item label="描述" prop="description">
             <el-input v-model.trim="workTypeForm.description" type="textarea" :rows="4" placeholder="请输入描述" />
