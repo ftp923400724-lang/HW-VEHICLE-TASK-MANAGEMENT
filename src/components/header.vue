@@ -1,35 +1,50 @@
 <template>
   <div class="header-wrap">
-    <el-row class="row-bg" align="middle" justify="space-between">
-      <el-col :span="4">
-        <div>
-          <div class="title-cn">车辆任务管理</div>
-          <div class="title-en">Vehicle Task Management Center</div>
-        </div>
-      </el-col>
-      <el-col :span="18">
-        <el-row align="middle" :gutter="20">
-          <el-col :span="3">
-            <div class="statistics" @click="taskOrderStatistics">
-              <el-image class="statistics-image" :src="taskOrderImg" fit="cover" />
-              <div>车辆任务单</div>
-            </div>
-          </el-col>
-          <el-col :span="3">
-            <div class="statistics" @click="workTypeStatistics">
-              <el-image class="statistics-image" :src="workTypeImg" fit="cover" />
-              <div>车辆作业类型</div>
-            </div>
-          </el-col>
-        </el-row>
-      </el-col>
-      <el-col :span="2">
-        <div class="statistics" @click="jumpToAppCenter($event)">
-          <el-image class="statistics-image" :src="AppCenterImg" fit="cover" />
-          <div>返回应用中心</div>
-        </div>
-      </el-col>
-    </el-row>
+    <div class="toolbar-row">
+      <div class="brand">
+        <div class="title-cn">车辆任务管理</div>
+        <div class="title-en">Vehicle Task Management Center</div>
+      </div>
+
+      <div class="control-center">
+        <button class="control-btn control-btn--accent" type="button" @click="taskOrderStatistics">
+          <span class="control-btn__icon">
+            <el-image class="control-btn__icon-image" :src="taskOrderImg" fit="cover" />
+          </span>
+          <span class="control-btn__text">
+            <span class="control-btn__title">车辆任务单</span>
+            <span class="control-btn__sub">任务单总览</span>
+          </span>
+        </button>
+        <button class="control-btn" type="button" @click="workTypeStatistics">
+          <span class="control-btn__icon">
+            <el-image class="control-btn__icon-image" :src="workTypeImg" fit="cover" />
+          </span>
+          <span class="control-btn__text">
+            <span class="control-btn__title">车辆作业类型</span>
+            <span class="control-btn__sub">作业分类分析</span>
+          </span>
+        </button>
+      </div>
+
+      <div class="header-actions">
+        <button class="action-btn" type="button" @click="refreshPage">
+          <span class="action-icon action-icon--text">↻</span>
+          <span>刷新</span>
+        </button>
+        <button class="action-btn" type="button" :class="{ 'action-btn--active': isFullscreen }"
+          @click="toggleFullscreen">
+          <span class="action-icon action-icon--text">{{ isFullscreen ? '⤡' : '⤢' }}</span>
+          <span>{{ isFullscreen ? '退出全屏' : '全屏' }}</span>
+        </button>
+        <button class="action-btn action-btn--primary" type="button" @click="jumpToAppCenter($event)">
+          <span class="action-icon">
+            <el-image class="action-icon__image" :src="AppCenterImg" fit="cover" />
+          </span>
+          <span>应用中心</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <VehicleWorkTypeWindow v-model:visible="workTypeDialogVisible" />
@@ -56,9 +71,86 @@ export default {
       AppCenterImg,
       workTypeDialogVisible: false,
       taskOrderDialogVisible: false,
+      isFullscreen: false,
     }
   },
+  mounted() {
+    this.syncFullscreenState()
+    document.addEventListener('fullscreenchange', this.handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', this.handleFullscreenChange)
+  },
+  beforeUnmount() {
+    document.removeEventListener('fullscreenchange', this.handleFullscreenChange)
+    document.removeEventListener('webkitfullscreenchange', this.handleFullscreenChange)
+  },
   methods: {
+    getFullscreenElement() {
+      return document.fullscreenElement || document.webkitFullscreenElement || null
+    },
+    syncFullscreenState() {
+      this.isFullscreen = Boolean(this.getFullscreenElement())
+    },
+    handleFullscreenChange() {
+      this.syncFullscreenState()
+    },
+    async refreshPage() {
+      try {
+        window.location.reload()
+      } catch (err) {
+        ElNotification({
+          title: '提示',
+          message: `刷新失败：${err.message}`,
+          type: 'error',
+        })
+      }
+    },
+    async requestFullscreen() {
+      const element = document.documentElement
+      const request =
+        element.requestFullscreen ||
+        element.webkitRequestFullscreen ||
+        element.msRequestFullscreen
+
+      if (!request) {
+        throw new Error('当前浏览器不支持全屏 API')
+      }
+
+      const result = request.call(element)
+      if (result && typeof result.then === 'function') {
+        await result
+      }
+    },
+    async exitFullscreen() {
+      const exit =
+        document.exitFullscreen ||
+        document.webkitExitFullscreen ||
+        document.msExitFullscreen
+
+      if (!exit) {
+        throw new Error('当前浏览器不支持退出全屏 API')
+      }
+
+      const result = exit.call(document)
+      if (result && typeof result.then === 'function') {
+        await result
+      }
+    },
+    async toggleFullscreen() {
+      try {
+        if (this.getFullscreenElement()) {
+          await this.exitFullscreen()
+        } else {
+          await this.requestFullscreen()
+        }
+        this.syncFullscreenState()
+      } catch (err) {
+        ElNotification({
+          title: '提示',
+          message: `全屏切换失败：${err.message}`,
+          type: 'error',
+        })
+      }
+    },
     isLocalOrIntranetHost(hostname) {
       if (!hostname) {
         return false
@@ -145,21 +237,32 @@ export default {
 
 <style scoped>
 .header-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   height: 100%;
-  background-color: #020b18;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
-  padding: 0 20px;
+  padding: 12px 16px 10px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(59, 130, 246, 0.24), transparent 30%),
+    linear-gradient(180deg, rgba(3, 10, 22, 0.96), rgba(5, 14, 28, 0.98));
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+}
+
+.toolbar-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.brand {
+  min-width: 0;
 }
 
 .title-cn {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
-  letter-spacing: 2px;
-  background: linear-gradient(90deg, #60a5fa, #a5f3fc);
+  letter-spacing: 2.2px;
+  background: linear-gradient(90deg, #7dd3fc, #dbeafe);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -167,98 +270,148 @@ export default {
 }
 
 .title-en {
-  font-size: 12px;
+  font-size: 11px;
   color: #94a3b8;
   letter-spacing: 1px;
   text-transform: uppercase;
+  margin-top: 2px;
 }
 
-.row-bg {
+.control-center {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.control-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  min-width: 184px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(10, 18, 34, 0.7);
+  color: #dbeafe;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.control-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 10px 20px rgba(2, 8, 23, 0.28);
+}
+
+.control-btn--accent {
+  border-color: rgba(96, 165, 250, 0.28);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.78), rgba(14, 165, 233, 0.56));
+}
+
+.control-btn__icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.control-btn__icon-image,
+.action-icon__image {
   width: 100%;
+  height: 100%;
 }
 
-.statistics {
+.control-btn__text {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+
+.control-btn__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.control-btn__sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.header-actions {
+  display: flex;
+  justify-content: flex-end;
   align-items: center;
-  color: #ffffff;
-  font-size: 14px;
-  padding: 8px;
-  border-radius: 8px;
+  gap: 10px;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(10, 18, 34, 0.7);
+  color: #dbeafe;
   cursor: pointer;
-  transition: all 0.3s ease;
-  min-width: 80px;
-  background-color: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(96, 165, 250, 0.1);
+  transition: all 0.2s ease;
 }
 
-.statistics:hover {
-  background-color: rgba(96, 165, 250, 0.1);
+.action-btn:hover {
+  transform: translateY(-1px);
   border-color: rgba(96, 165, 250, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.15);
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 10px 20px rgba(2, 8, 23, 0.28);
 }
 
-.statistics-image {
-  width: 40px;
-  height: 40px;
-  margin-bottom: 8px;
-  transition: transform 0.3s ease;
+.action-btn--active {
+  border-color: rgba(125, 211, 252, 0.45);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(8, 47, 73, 0.88));
 }
 
-.statistics:hover .statistics-image {
-  transform: rotate(5deg) scale(1.05);
-  border-color: rgba(165, 243, 252, 0.3);
+.action-btn--primary {
+  border-color: rgba(96, 165, 250, 0.28);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.7), rgba(14, 165, 233, 0.55));
 }
 
-.statistics>div:last-child {
-  letter-spacing: 0.5px;
-  font-weight: 500;
-  background: linear-gradient(90deg, #ffffff, #a5f3fc);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-fill-color: transparent;
-  transition: all 0.3s ease;
+.action-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  overflow: hidden;
 }
 
-.statistics:hover>div:last-child {
-  background: linear-gradient(90deg, #60a5fa, #a5f3fc);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-fill-color: transparent;
+.action-icon--text {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
 }
 
-@media (max-width: 1200px) {
-  .statistics {
-    min-width: 70px;
-    padding: 10px 6px;
+@media (max-width: 1440px) {
+  .toolbar-row {
+    grid-template-columns: auto auto;
   }
 
-  .statistics-image {
-    width: 36px;
-    height: 36px;
-  }
-
-  .statistics>div:last-child {
-    font-size: 13px;
-  }
-}
-
-@media (max-width: 992px) {
-  .statistics {
-    min-width: 60px;
-    padding: 8px 4px;
-  }
-
-  .statistics-image {
-    width: 32px;
-    height: 32px;
-  }
-
-  .statistics>div:last-child {
-    font-size: 12px;
+  .header-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 }
 </style>

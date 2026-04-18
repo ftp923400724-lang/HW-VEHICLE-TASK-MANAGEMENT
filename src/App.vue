@@ -1,95 +1,133 @@
 <template>
-  <div class="common-layout">
-    <el-container class="root">
-      <el-header class="header">
-        <AppHeader />
-      </el-header>
-      <el-container class="body">
-        <el-aside width="280px" class="aside">
-          <AppAside />
-        </el-aside>
-        <el-container class="content">
-          <el-main class="main">
-            <AppMain />
-          </el-main>
-          <el-footer class="footer">
-            <AppFooter />
-          </el-footer>
-        </el-container>
-      </el-container>
-    </el-container>
+  <div class="dashboard-shell">
+    <header class="dashboard-header">
+      <AppHeader />
+    </header>
+
+    <main class="dashboard-body">
+      <aside class="dashboard-aside dashboard-aside--left">
+        <AppAside />
+      </aside>
+
+      <section class="dashboard-main">
+        <AppMain />
+      </section>
+
+      <aside class="dashboard-aside dashboard-aside--right">
+        <AppFooter />
+      </aside>
+    </main>
   </div>
 </template>
 
 <script>
-import './assets/css/global.css';
-import AppHeader from './components/header.vue';
-import AppAside from './components/aside.vue';
-import AppMain from './components/main.vue';
-import AppFooter from './components/footer.vue';
+import './assets/css/global.css'
+import AppHeader from './components/header.vue'
+import AppAside from './components/aside.vue'
+import AppMain from './components/main.vue'
+import AppFooter from './components/right.vue'
 export default {
-  name: "FullScreenLayout",
+  name: 'FullScreenLayout',
   components: {
     AppHeader,
     AppAside,
     AppMain,
     AppFooter,
-  },
-};
+  }
+}
 </script>
-<!-- ✅ 组件样式：可以 scoped -->
+
 <style scoped>
-.common-layout {
+.dashboard-shell {
   width: 100%;
-  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  max-height: 100vh;
+  --dashboard-header-height: 84px;
   overflow: hidden;
-}
-
-/* 根容器撑满 */
-.root {
-  width: 100%;
-  height: 100%;
-}
-
-/* Header 高度可自定义（Element 默认 60px） */
-.header {
-  height: 100px;
-  /* background-color: #020b18; */
-}
-
-/* 中间区域必须撑满剩余高度 */
-.body {
-  flex: 1;
-  height: 0;
-  /* 关键：让 flex 子项计算高度正确 */
-}
-
-/* 右侧内容容器撑满 */
-.content {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-width: 0;
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 24%),
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.12), transparent 22%),
+    linear-gradient(180deg, #040a15 0%, #07101d 44%, #050b16 100%);
 }
 
-/* Main 占剩余空间并允许内部滚动 */
-.main {
-  flex: 1;
+.dashboard-header {
+  flex: 0 0 var(--dashboard-header-height);
+  height: var(--dashboard-header-height);
+  box-sizing: border-box;
+  width: 100%;
   min-height: 0;
-  overflow: auto;
-}
-
-.aside {
-  height: 100%;
-  background-color: #0d1421;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
-  padding-bottom: 30px !important;
   overflow: hidden;
 }
 
-.footer {
-  height: 250px;
+.dashboard-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: clamp(280px, 22vw, 340px) minmax(0, 1fr) clamp(300px, 24vw, 360px);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.dashboard-main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dashboard-aside {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+}
+
+.dashboard-aside--left,
+.dashboard-aside--right {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+@media (max-width: 1600px) {
+  .dashboard-body {
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(280px, 320px);
+  }
+}
+
+@media (max-width: 1360px) {
+  .dashboard-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'left'
+      'main'
+      'right';
+  }
+
+  .dashboard-aside--left {
+    grid-area: left;
+  }
+
+  .dashboard-main {
+    grid-area: main;
+  }
+
+  .dashboard-aside--right {
+    grid-area: right;
+  }
+}
+
+@media (min-width: 1361px) {
+  .dashboard-aside--left {
+    grid-column: 1;
+  }
+
+  .dashboard-main {
+    grid-column: 2;
+  }
+
+  .dashboard-aside--right {
+    grid-column: 3;
+  }
 }
 </style>
